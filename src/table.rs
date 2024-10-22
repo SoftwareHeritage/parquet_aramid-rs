@@ -20,12 +20,13 @@ use parquet::arrow::arrow_reader::{ArrowReaderOptions, RowSelection};
 use parquet::arrow::async_reader::AsyncFileReader;
 use parquet::arrow::async_reader::ParquetRecordBatchStream;
 use parquet::arrow::ParquetRecordBatchStreamBuilder;
+use parquet::file::metadata::ParquetMetaData;
 use parquet::schema::types::SchemaDescriptor;
 use sux::traits::IndexedDict;
 use tokio::task::JoinSet;
 use tracing::instrument;
 
-use super::metrics::TableScanInitMetrics;
+use super::metrics::{RowGroupsSelectionMetrics, TableScanInitMetrics};
 use super::reader::FileReader;
 use super::types::IndexKey;
 
@@ -158,13 +159,16 @@ impl Table {
     ///
     /// Returns metrics for each pruned reader, and a `(keys_in_reader, reader, metric)` triple
     /// for each selected reader
-    #[instrument(name="Table::readers_filtered_by_keys", skip_all)]
+    #[instrument(name = "Table::readers_filtered_by_keys", skip_all)]
     #[allow(clippy::type_complexity)]
     pub async fn readers_filtered_by_keys<'a, K: IndexKey>(
         &'a self,
         column: &'static str,
         keys: Arc<Vec<K>>,
-    ) -> Result<(Vec<TableScanInitMetrics>, Vec<(Arc<Vec<K>>, impl AsyncFileReader, TableScanInitMetrics)>)> {
+    ) -> Result<(
+        Vec<TableScanInitMetrics>,
+        Vec<(Arc<Vec<K>>, impl AsyncFileReader, TableScanInitMetrics)>,
+    )> {
         // Filter out whole files based on the file-level Elias-Fano index
         let readers_and_metrics = self
             .files
@@ -237,7 +241,10 @@ impl Table {
             .index_of(column)
             .with_context(|| format!("Unknown column {}", column))?;
 
-        let (pruned_metrics, selected_readers_and_metrics) = self.readers_filtered_by_keys(column, keys).await.context("Could not get filtered list of file readers")?;
+        let (pruned_metrics, selected_readers_and_metrics) = self
+            .readers_filtered_by_keys(column, keys)
+            .await
+            .context("Could not get filtered list of file readers")?;
 
         let (selected_metrics, reader_streams): (Vec<_>, Vec<ParquetRecordBatchStream<_>>) = selected_readers_and_metrics
             .into_iter()
@@ -277,67 +284,14 @@ impl Table {
                         &parquet_schema,
                     )
                     .context("Could not build statistics converter")?;
-                    let row_groups_match_statistics = {
-                        let _timer_guard = metrics.eval_row_groups_statistics_time.timer();
-                        IndexKey::check_column_chunk(
-                            &keys,
-                            &statistics_converter,
-                            parquet_metadata.row_groups(),
-                        )
-                        .context("Could not check row group statistics")?
-                    };
 
-                    let selected_row_groups = if let Some(row_groups_match_statistics) = row_groups_match_statistics {
-                        let mut selected_row_groups = Vec::new();
-                        for (row_group_idx, row_group_matches_statistics) in
-                                row_groups_match_statistics.into_iter()
-                                .enumerate()
-                        {
-                            // Prune row group using statistics
-                            if row_group_matches_statistics {
-                                // there may be a key in this row group
-                                metrics.row_groups_selected_by_statistics += 1
-                            } else {
-                                // we know for sure there is no key in this row group
-                                metrics.row_groups_pruned_by_statistics += 1;
-                                continue; // shortcut
-                            }
+                    // Filter on row groups statistics and Bloom filters
+                    let (row_groups_selection_metrics, selected_row_groups) = filter_row_groups(
+                        &mut stream_builder, column_idx, &parquet_metadata, &statistics_converter, &keys
+                    ).await.context("Could not filter row groups")?;
+                    metrics.row_groups += row_groups_selection_metrics;
 
-                            // TODO: filter out keys that didn't match the statistics, to reduce the
-                            // runtime and number of false positives in checking the bloom filter
-
-                            // Prune row groups using Bloom Filters
-                            {
-                                let timer_guard = metrics.eval_bloom_filter_time.timer();
-                                if let Some(bloom_filter) = stream_builder
-                                    .get_row_group_column_bloom_filter(row_group_idx, column_idx)
-                                    .await
-                                    .context("Could not get Bloom Filter")?
-                                {
-                                    drop(timer_guard);
-                                    let _timer_guard = metrics.eval_bloom_filter_time.timer();
-                                    let mut keys_in_group =
-                                        keys.iter().filter(|&key| bloom_filter.check(key));
-                                    if keys_in_group.next().is_none() {
-                                        // None of the keys matched the Bloom Filter
-                                        metrics.row_groups_pruned_by_bloom_filters += 1;
-                                        continue; // shortcut
-                                    }
-                                    // At least one key matched the Bloom Filter
-                                    metrics.row_groups_selected_by_bloom_filters += 1;
-                                }
-                            }
-
-                            selected_row_groups.push(row_group_idx);
-                        }
-                        selected_row_groups
-                    } else {
-                        // We don't know how to filter on row group statistics, so we
-                        // unconditionally select every row group
-                        (0..parquet_metadata.row_groups().len()).collect()
-                    };
-
-                    // TODO: remove keys that did not match any of the bloom filters
+                    // TODO: remove keys that did not match any of the statistics or bloom filters
 
                     // Prune pages using page index
                     let row_selection = if let Some(column_index) = column_index {
@@ -488,6 +442,72 @@ impl Table {
 
         Ok(tokio_stream::wrappers::ReceiverStream::new(rx))
     }
+}
+
+/// Returns the list of row group indices whose statistics and Bloom Filter match any of the keys
+async fn filter_row_groups<K: IndexKey>(
+    stream_builder: &mut ParquetRecordBatchStreamBuilder<impl AsyncFileReader + 'static>,
+    column_idx: usize,
+    parquet_metadata: &Arc<ParquetMetaData>,
+    statistics_converter: &StatisticsConverter<'_>,
+    keys: &Arc<Vec<K>>,
+) -> Result<(RowGroupsSelectionMetrics, Vec<usize>)> {
+    let mut metrics = RowGroupsSelectionMetrics::default();
+
+    let row_groups_match_statistics = {
+        let _timer_guard = metrics.eval_row_groups_statistics_time.timer();
+        IndexKey::check_column_chunk(keys, statistics_converter, parquet_metadata.row_groups())
+            .context("Could not check row group statistics")?
+    };
+
+    let Some(row_groups_match_statistics) = row_groups_match_statistics else {
+        // We don't know how to filter on row group statistics, so we
+        // unconditionally select every row group
+        // TODO: we could at least filter on Bloom Filters here
+        return Ok((metrics, (0..parquet_metadata.row_groups().len()).collect()));
+    };
+
+    let mut selected_row_groups = Vec::new();
+    for (row_group_idx, row_group_matches_statistics) in
+        row_groups_match_statistics.into_iter().enumerate()
+    {
+        // Prune row group using statistics
+        if row_group_matches_statistics {
+            // there may be a key in this row group
+            metrics.row_groups_selected_by_statistics += 1
+        } else {
+            // we know for sure there is no key in this row group
+            metrics.row_groups_pruned_by_statistics += 1;
+            continue; // shortcut
+        }
+
+        // TODO: filter out keys that didn't match the statistics, to reduce the
+        // runtime and number of false positives in checking the bloom filter
+
+        // Prune row groups using Bloom Filters
+        {
+            let timer_guard = metrics.eval_bloom_filter_time.timer();
+            if let Some(bloom_filter) = stream_builder
+                .get_row_group_column_bloom_filter(row_group_idx, column_idx)
+                .await
+                .context("Could not get Bloom Filter")?
+            {
+                drop(timer_guard);
+                let _timer_guard = metrics.eval_bloom_filter_time.timer();
+                let mut keys_in_group = keys.iter().filter(|&key| bloom_filter.check(key));
+                if keys_in_group.next().is_none() {
+                    // None of the keys matched the Bloom Filter
+                    metrics.row_groups_pruned_by_bloom_filters += 1;
+                    continue; // shortcut
+                }
+                // At least one key matched the Bloom Filter
+                metrics.row_groups_selected_by_bloom_filters += 1;
+            }
+        }
+
+        selected_row_groups.push(row_group_idx);
+    }
+    Ok((metrics, selected_row_groups))
 }
 
 pub trait ReaderBuilderConfigurator: Send + Sync + 'static {
