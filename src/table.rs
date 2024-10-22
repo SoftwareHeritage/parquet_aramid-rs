@@ -154,19 +154,17 @@ impl Table {
             .collect::<FuturesUnordered<_>>()
     }
 
-    /// Returns all rows in which the given column contains any of the given keys
-    #[allow(clippy::single_range_in_vec_init)] // false positive
-    pub async fn filtered_record_batch_stream_builder<'a, K: IndexKey>(
+    /// Returns file readers that may contain the given keys
+    ///
+    /// Returns metrics for each pruned reader, and a `(keys_in_reader, reader, metric)` triple
+    /// for each selected reader
+    #[instrument(name="Table::readers_filtered_by_keys", skip_all)]
+    #[allow(clippy::type_complexity)]
+    pub async fn readers_filtered_by_keys<'a, K: IndexKey>(
         &'a self,
         column: &'static str,
         keys: Arc<Vec<K>>,
-        builder_configurator: Arc<impl ReaderBuilderConfigurator>,
-    ) -> Result<impl Stream<Item = Result<RecordBatch>> + 'static> {
-        let column_idx: usize = self
-            .schema
-            .index_of(column)
-            .with_context(|| format!("Unknown column {}", column))?;
-
+    ) -> Result<(Vec<TableScanInitMetrics>, Vec<(Arc<Vec<K>>, impl AsyncFileReader, TableScanInitMetrics)>)> {
         // Filter out whole files based on the file-level Elias-Fano index
         let readers_and_metrics = self
             .files
@@ -221,6 +219,25 @@ impl Table {
                 pruned_metrics.push(metrics);
             }
         }
+
+        Ok((pruned_metrics, selected_readers_and_metrics))
+    }
+
+    #[instrument(name="Table::stream_for_keys", skip_all, fields(column=%column))]
+    /// Returns all rows in which the given column contains any of the given keys
+    #[allow(clippy::single_range_in_vec_init)] // false positive
+    pub async fn stream_for_keys<'a, K: IndexKey>(
+        &'a self,
+        column: &'static str,
+        keys: Arc<Vec<K>>,
+        builder_configurator: Arc<impl ReaderBuilderConfigurator>,
+    ) -> Result<impl Stream<Item = Result<RecordBatch>> + 'static> {
+        let column_idx: usize = self
+            .schema
+            .index_of(column)
+            .with_context(|| format!("Unknown column {}", column))?;
+
+        let (pruned_metrics, selected_readers_and_metrics) = self.readers_filtered_by_keys(column, keys).await.context("Could not get filtered list of file readers")?;
 
         let (selected_metrics, reader_streams): (Vec<_>, Vec<ParquetRecordBatchStream<_>>) = selected_readers_and_metrics
             .into_iter()
