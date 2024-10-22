@@ -26,7 +26,7 @@ use sux::traits::IndexedDict;
 use tokio::task::JoinSet;
 use tracing::instrument;
 
-use super::metrics::{RowGroupsSelectionMetrics, TableScanInitMetrics};
+use super::metrics::{RowGroupsSelectionMetrics, RowsSelectionMetrics, TableScanInitMetrics};
 use super::reader::FileReader;
 use super::types::IndexKey;
 
@@ -229,7 +229,6 @@ impl Table {
 
     #[instrument(name="Table::stream_for_keys", skip_all, fields(column=%column))]
     /// Returns all rows in which the given column contains any of the given keys
-    #[allow(clippy::single_range_in_vec_init)] // false positive
     pub async fn stream_for_keys<'a, K: IndexKey>(
         &'a self,
         column: &'static str,
@@ -246,171 +245,97 @@ impl Table {
             .await
             .context("Could not get filtered list of file readers")?;
 
-        let (selected_metrics, reader_streams): (Vec<_>, Vec<ParquetRecordBatchStream<_>>) = selected_readers_and_metrics
-            .into_iter()
-            .map(move |(keys, reader, mut metrics)| {
-                let builder_configurator = Arc::clone(&builder_configurator);
-                async move {
-                    let total_timer_guard = metrics.total_time.timer();
+        let (selected_metrics, reader_streams): (Vec<_>, Vec<ParquetRecordBatchStream<_>>) =
+            selected_readers_and_metrics
+                .into_iter()
+                .map(move |(keys, reader, mut metrics)| {
+                    let builder_configurator = Arc::clone(&builder_configurator);
+                    async move {
+                        let total_timer_guard = metrics.total_time.timer();
 
-                    let mut stream_builder = {
-                        let _timer_guard = metrics.open_builder_time.timer();
-                        ParquetRecordBatchStreamBuilder::new_with_options(
-                            reader,
-                            ArrowReaderOptions::new().with_page_index(true),
+                        let mut stream_builder = {
+                            let _timer_guard = metrics.open_builder_time.timer();
+                            ParquetRecordBatchStreamBuilder::new_with_options(
+                                reader,
+                                ArrowReaderOptions::new().with_page_index(true),
+                            )
+                            .await
+                            .context("Could not open stream")?
+                        };
+
+                        if keys.is_empty() {
+                            // shortcut, return nothing
+                            drop(total_timer_guard);
+                            return Ok((
+                                metrics,
+                                stream_builder
+                                    .with_row_groups(vec![])
+                                    .build()
+                                    .context("Could not build empty record stream")?,
+                            ));
+                        }
+
+                        let parquet_metadata = {
+                            let _timer_guard = metrics.read_metadata_time.timer();
+                            Arc::clone(stream_builder.metadata())
+                        };
+                        let schema = Arc::clone(stream_builder.schema());
+                        let parquet_schema = SchemaDescriptor::new(
+                            stream_builder.parquet_schema().root_schema_ptr(),
+                        ); // clone
+                        let statistics_converter =
+                            StatisticsConverter::try_new(column, &schema, &parquet_schema)
+                                .context("Could not build statistics converter")?;
+
+                        // Filter on row groups statistics and Bloom filters
+                        let (row_groups_selection_metrics, selected_row_groups) =
+                            filter_row_groups(
+                                &mut stream_builder,
+                                column_idx,
+                                &parquet_metadata,
+                                &statistics_converter,
+                                &keys,
+                            )
+                            .await
+                            .context("Could not filter row groups")?;
+                        metrics.row_groups_selection += row_groups_selection_metrics;
+
+                        // TODO: remove keys that did not match any of the statistics or bloom filters
+
+                        // Prune pages using page index
+                        let (rows_selection_metrics, row_selection) = filter_rows(
+                            &selected_row_groups,
+                            column_idx,
+                            &parquet_metadata,
+                            &statistics_converter,
+                            &keys,
                         )
                         .await
-                        .context("Could not open stream")?
-                    };
-
-                    if keys.is_empty() {
-                        // shortcut, return nothing
+                        .context("Could not filter rows")?;
+                        metrics.rows_selection += rows_selection_metrics;
+                        let stream_builder = stream_builder
+                            .with_row_groups(selected_row_groups)
+                            .with_row_selection(row_selection);
                         drop(total_timer_guard);
-                        return Ok((metrics, stream_builder.with_row_groups(vec![]).build().context("Could not build empty record stream")?));
+                        Ok((
+                            metrics,
+                            builder_configurator
+                                .configure(stream_builder)
+                                .context(
+                                    "Could not finish configuring ParquetRecordBatchStreamBuilder",
+                                )?
+                                .build()
+                                .context("Could not build ParquetRecordBatchStream")?,
+                        ))
                     }
-
-                    let parquet_metadata = {
-                        let _timer_guard = metrics.read_metadata_time.timer();
-                        Arc::clone(stream_builder.metadata())
-                    };
-                    let column_index = parquet_metadata.column_index();
-                    let offset_index = parquet_metadata.offset_index();
-
-                    let schema = Arc::clone(stream_builder.schema());
-                    let parquet_schema = SchemaDescriptor::new(stream_builder.parquet_schema().root_schema_ptr()); // clone
-                    let statistics_converter = StatisticsConverter::try_new(
-                        column,
-                        &schema,
-                        &parquet_schema,
-                    )
-                    .context("Could not build statistics converter")?;
-
-                    // Filter on row groups statistics and Bloom filters
-                    let (row_groups_selection_metrics, selected_row_groups) = filter_row_groups(
-                        &mut stream_builder, column_idx, &parquet_metadata, &statistics_converter, &keys
-                    ).await.context("Could not filter row groups")?;
-                    metrics.row_groups += row_groups_selection_metrics;
-
-                    // TODO: remove keys that did not match any of the statistics or bloom filters
-
-                    // Prune pages using page index
-                    let row_selection = if let Some(column_index) = column_index {
-                        let _timer_guard = metrics.eval_page_index_time.timer();
-                        let offset_index =
-                            offset_index.expect("column_index is present but offset_index is not");
-
-                        let num_rows_in_selected_row_groups: i64 = selected_row_groups
-                            .iter()
-                            .map(|&row_group_idx| {
-                                parquet_metadata.row_group(row_group_idx).num_rows()
-                            })
-                            .sum();
-                        let num_rows_in_selected_row_groups = usize::try_from(num_rows_in_selected_row_groups).context("Number of rows in selected row groups overflows usize")?;
-
-                        // TODO: if no page in a row group was selected, deselect the row group as
-                        // well. This makes sense to do in the case where a row group has two
-                        // pages, one with values from 0 to 10 and the other with values from 20 to
-                        // 30 and we are looking for 15; because the row group statistics are too
-                        // coarse-grained and missed the discontinuity in ranges.
-                        let selected_pages = IndexKey::check_page_index(
-                            &keys,
-                            &statistics_converter,
-                            column_index,
-                            offset_index,
-                            &selected_row_groups,
-                        )?;
-                        match selected_pages {
-                            None => {
-                                // IndexKey does not implement check_page_index, so we need to read
-                                // every page from the selected row groups
-                                RowSelection::from_consecutive_ranges([
-                                    0..num_rows_in_selected_row_groups
-                                ].into_iter(), num_rows_in_selected_row_groups)
-                            }
-                            Some(selected_pages) => {
-                                // TODO: exit early if no page is selected
-
-                                let mut selected_pages_iter = selected_pages.iter();
-                                let mut selected_ranges = Vec::new();
-
-                                // Index of the first row in the current group within the current row group selection.
-                                // This is 0 for every row group that does not have a selected row group before itself.
-                                // See https://docs.rs/parquet/53.1.0/parquet/arrow/async_reader/type.ParquetRecordBatchStreamBuilder.html#tymethod.with_row_selection
-                                let mut current_row_group_first_row_idx = 0usize;
-
-                                // For each row group, get selected pages locations inside that row group,
-                                // and translate these locations into ranges that we can feed to
-                                // RowSelection
-                                for &row_group_idx in &selected_row_groups {
-                                    let row_group_meta = parquet_metadata.row_group(row_group_idx);
-                                    let num_rows_in_row_group = usize::try_from(
-                                        row_group_meta.num_rows(),
-                                    )
-                                    .context("number of rows in row group overflowed usize")?;
-                                    let next_row_group_first_row_idx =
-                                        current_row_group_first_row_idx
-                                            .checked_add(num_rows_in_row_group)
-                                            .context("Number of rows in file overflowed usize")?;
-
-                                    let mut page_locations_iter = offset_index[row_group_idx]
-                                        [column_idx]
-                                        .page_locations().iter().peekable();
-                                    while let Some(page_location) = page_locations_iter.next() {
-                                        if selected_pages_iter.next().expect("check_page_index returned an array smaller than the number of pages") {
-                                            assert!(page_location.first_row_index < row_group_meta.num_rows(), "page_location.first_row_index is greater or equal to the number of rows in its row group");
-                                            let page_first_row_index = usize::try_from(page_location.first_row_index).context("page_location.first_row_index overflowed usize")?;
-                                            if let Some(next_page_location) = page_locations_iter.peek() {
-                                                let next_page_first_row_index = usize::try_from(next_page_location.first_row_index).context("next_page_location.first_row_index overflowed usize")?;
-                                                selected_ranges.push((current_row_group_first_row_idx+page_first_row_index)..(current_row_group_first_row_idx+next_page_first_row_index))
-                                            } else {
-                                                // last page of the row group
-                                                selected_ranges.push((current_row_group_first_row_idx+page_first_row_index)..next_row_group_first_row_idx);
-                                            }
-                                        }
-                                    }
-                                    current_row_group_first_row_idx = next_row_group_first_row_idx;
-                                }
-
-                                // Build RowSelection from the ranges corresponding to each selected page
-                                RowSelection::from_consecutive_ranges(
-                                    selected_ranges.into_iter(),
-                                    num_rows_in_selected_row_groups,
-                                )
-                            }
-                        }
-                    } else {
-                        let num_rows_in_selected_row_groups: i64 = selected_row_groups
-                            .iter()
-                            .map(|&row_group_idx| {
-                                parquet_metadata.row_group(row_group_idx).num_rows()
-                            })
-                            .sum();
-                        let num_rows_in_selected_row_groups: usize =
-                            num_rows_in_selected_row_groups
-                                .try_into()
-                                .context("num_rows_in_selected_row_groups overflowed usize")?;
-                        RowSelection::from_consecutive_ranges(
-                            [0..num_rows_in_selected_row_groups].into_iter(),
-                            num_rows_in_selected_row_groups,
-                        )
-                    };
-                    metrics.rows_pruned_by_page_index = row_selection.skipped_row_count();
-                    metrics.rows_selected_by_page_index = row_selection.row_count();
-                    let stream_builder = stream_builder
-                        .with_row_groups(selected_row_groups)
-                        .with_row_selection(row_selection);
-                    drop(total_timer_guard);
-                    Ok((metrics, builder_configurator.configure(stream_builder).context("Could not finish configuring ParquetRecordBatchStreamBuilder")?.build().context("Could not build ParquetRecordBatchStream")?))
-
-                }
-            })
-            .collect::<JoinSet<_>>()
-            .join_all()
-            .await
-            .into_iter()
-            .collect::<Result<Vec<_>>>()?
-            .into_iter()
-            .unzip();
+                })
+                .collect::<JoinSet<_>>()
+                .join_all()
+                .await
+                .into_iter()
+                .collect::<Result<Vec<_>>>()?
+                .into_iter()
+                .unzip();
 
         let metrics: TableScanInitMetrics = [
             pruned_metrics.into_iter().sum(),
@@ -508,6 +433,133 @@ async fn filter_row_groups<K: IndexKey>(
         selected_row_groups.push(row_group_idx);
     }
     Ok((metrics, selected_row_groups))
+}
+
+/// Returns the set of row indices whose page index matches any of the keys
+#[allow(clippy::single_range_in_vec_init)] // false positive
+async fn filter_rows<K: IndexKey>(
+    selected_row_groups: &[usize],
+    column_idx: usize,
+    parquet_metadata: &Arc<ParquetMetaData>,
+    statistics_converter: &StatisticsConverter<'_>,
+    keys: &Arc<Vec<K>>,
+) -> Result<(RowsSelectionMetrics, RowSelection)> {
+    let column_index = parquet_metadata.column_index();
+    let offset_index = parquet_metadata.offset_index();
+
+    let mut metrics = RowsSelectionMetrics::default();
+
+    let timer_guard = metrics.eval_page_index_time.timer();
+
+    let num_rows_in_selected_row_groups: i64 = selected_row_groups
+        .iter()
+        .map(|&row_group_idx| parquet_metadata.row_group(row_group_idx).num_rows())
+        .sum();
+    let num_rows_in_selected_row_groups = usize::try_from(num_rows_in_selected_row_groups)
+        .context("Number of rows in selected row groups overflows usize")?;
+
+    let Some(column_index) = column_index else {
+        // No page index, select every row in the selected row groups
+        drop(timer_guard);
+        return Ok((
+            metrics,
+            RowSelection::from_consecutive_ranges(
+                [0..num_rows_in_selected_row_groups].into_iter(),
+                num_rows_in_selected_row_groups,
+            ),
+        ));
+    };
+    let offset_index = offset_index.expect("column_index is present but offset_index is not");
+
+    // TODO: if no page in a row group was selected, deselect the row group as
+    // well. This makes sense to do in the case where a row group has two
+    // pages, one with values from 0 to 10 and the other with values from 20 to
+    // 30 and we are looking for 15; because the row group statistics are too
+    // coarse-grained and missed the discontinuity in ranges.
+    let selected_pages = IndexKey::check_page_index(
+        keys,
+        statistics_converter,
+        column_index,
+        offset_index,
+        selected_row_groups,
+    )?;
+    let Some(selected_pages) = selected_pages else {
+        // IndexKey does not implement check_page_index, so we need to read
+        // every page from the selected row groups
+        drop(timer_guard);
+        return Ok((
+            metrics,
+            RowSelection::from_consecutive_ranges(
+                [0..num_rows_in_selected_row_groups].into_iter(),
+                num_rows_in_selected_row_groups,
+            ),
+        ));
+    };
+    // TODO: exit early if no page is selected
+
+    let mut selected_pages_iter = selected_pages.iter();
+    let mut selected_ranges = Vec::new();
+
+    // Index of the first row in the current group within the current row group selection.
+    // This is 0 for every row group that does not have a selected row group before itself.
+    // See https://docs.rs/parquet/53.1.0/parquet/arrow/async_reader/type.ParquetRecordBatchStreamBuilder.html#tymethod.with_row_selection
+    let mut current_row_group_first_row_idx = 0usize;
+
+    // For each row group, get selected pages locations inside that row group,
+    // and translate these locations into ranges that we can feed to
+    // RowSelection
+    for &row_group_idx in selected_row_groups {
+        let row_group_meta = parquet_metadata.row_group(row_group_idx);
+        let num_rows_in_row_group = usize::try_from(row_group_meta.num_rows())
+            .context("number of rows in row group overflowed usize")?;
+        let next_row_group_first_row_idx = current_row_group_first_row_idx
+            .checked_add(num_rows_in_row_group)
+            .context("Number of rows in file overflowed usize")?;
+
+        let mut page_locations_iter = offset_index[row_group_idx][column_idx]
+            .page_locations()
+            .iter()
+            .peekable();
+        while let Some(page_location) = page_locations_iter.next() {
+            if selected_pages_iter
+                .next()
+                .expect("check_page_index returned an array smaller than the number of pages")
+            {
+                assert!(
+                            page_location.first_row_index < row_group_meta.num_rows(),
+                            "page_location.first_row_index is greater or equal to the number of rows in its row group"
+                        );
+                let page_first_row_index = usize::try_from(page_location.first_row_index)
+                    .context("page_location.first_row_index overflowed usize")?;
+                if let Some(next_page_location) = page_locations_iter.peek() {
+                    let next_page_first_row_index =
+                        usize::try_from(next_page_location.first_row_index)
+                            .context("next_page_location.first_row_index overflowed usize")?;
+                    selected_ranges.push(
+                        (current_row_group_first_row_idx + page_first_row_index)
+                            ..(current_row_group_first_row_idx + next_page_first_row_index),
+                    )
+                } else {
+                    // last page of the row group
+                    selected_ranges.push(
+                        (current_row_group_first_row_idx + page_first_row_index)
+                            ..next_row_group_first_row_idx,
+                    );
+                }
+            }
+        }
+        current_row_group_first_row_idx = next_row_group_first_row_idx;
+    }
+
+    // Build RowSelection from the ranges corresponding to each selected page
+    let row_selection = RowSelection::from_consecutive_ranges(
+        selected_ranges.into_iter(),
+        num_rows_in_selected_row_groups,
+    );
+    metrics.rows_pruned_by_page_index = row_selection.skipped_row_count();
+    metrics.rows_selected_by_page_index = row_selection.row_count();
+    drop(timer_guard);
+    Ok((metrics, row_selection))
 }
 
 pub trait ReaderBuilderConfigurator: Send + Sync + 'static {

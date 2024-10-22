@@ -55,16 +55,12 @@ pub struct TableScanInitMetrics {
     pub files_pruned_by_ef_index: u64,
     pub files_selected_by_ef_index: u64,
 
-    pub row_groups: RowGroupsSelectionMetrics,
-    pub rows_pruned_by_page_index: usize,
-    pub rows_selected_by_page_index: usize,
-    pub row_groups_pruned_by_page_index: u64,
-    pub row_groups_selected_by_page_index: u64,
+    pub row_groups_selection: RowGroupsSelectionMetrics,
+    pub rows_selection: RowsSelectionMetrics,
 
     pub ef_file_index_eval_time: Timing,
     pub open_builder_time: Timing,
     pub read_metadata_time: Timing,
-    pub eval_page_index_time: Timing,
     pub total_time: Timing,
 }
 
@@ -75,17 +71,12 @@ impl std::iter::Sum for TableScanInitMetrics {
             for item in it {
                 sum.files_pruned_by_ef_index += item.files_pruned_by_ef_index;
                 sum.files_selected_by_ef_index += item.files_selected_by_ef_index;
-                sum.row_groups += item.row_groups;
-                sum.row_groups_pruned_by_page_index += item.row_groups_pruned_by_page_index;
-                sum.row_groups_selected_by_page_index += item.row_groups_selected_by_page_index;
-                sum.rows_pruned_by_page_index += item.rows_pruned_by_page_index;
-                sum.rows_selected_by_page_index += item.rows_selected_by_page_index;
+                sum.row_groups_selection += item.row_groups_selection;
+                sum.rows_selection += item.rows_selection;
                 sum.open_builder_time.add(item.open_builder_time.get());
                 sum.read_metadata_time.add(item.read_metadata_time.get());
                 sum.ef_file_index_eval_time
                     .add(item.ef_file_index_eval_time.get());
-                sum.eval_page_index_time
-                    .add(item.eval_page_index_time.get());
                 sum.total_time.add(item.total_time.get());
             }
         }
@@ -121,5 +112,27 @@ impl std::ops::AddAssign for RowGroupsSelectionMetrics {
             .add(rhs.read_bloom_filter_time.get());
         self.eval_bloom_filter_time
             .add(rhs.eval_bloom_filter_time.get());
+    }
+}
+
+#[derive(Debug, Default)]
+pub struct RowsSelectionMetrics {
+    pub rows_pruned_by_page_index: usize,
+    pub rows_selected_by_page_index: usize,
+    pub row_groups_pruned_by_page_index: u64,
+    pub row_groups_selected_by_page_index: u64,
+
+    pub eval_page_index_time: Timing,
+}
+
+impl std::ops::AddAssign for RowsSelectionMetrics {
+    fn add_assign(&mut self, rhs: Self) {
+        self.row_groups_pruned_by_page_index += rhs.row_groups_pruned_by_page_index;
+        self.row_groups_selected_by_page_index += rhs.row_groups_selected_by_page_index;
+        self.rows_pruned_by_page_index += rhs.rows_pruned_by_page_index;
+        self.rows_selected_by_page_index += rhs.rows_selected_by_page_index;
+
+        self.eval_page_index_time
+            .add(rhs.eval_page_index_time.get());
     }
 }
