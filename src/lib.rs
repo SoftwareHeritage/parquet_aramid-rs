@@ -10,4 +10,3 @@ mod reader;
 mod table;
 pub use table::*;
 pub mod types;
-

@@ -128,7 +128,11 @@ impl Table {
     }
 
     pub fn mmap_ef_index(&self, ef_index_column: &'static str) -> Result<()> {
-        tracing::trace!("Memory-mapping file-level index for column {} of {}", ef_index_column, self.path);
+        tracing::trace!(
+            "Memory-mapping file-level index for column {} of {}",
+            ef_index_column,
+            self.path
+        );
         self.files
             .iter()
             .map(Arc::clone)

@@ -59,7 +59,6 @@ impl<const N: usize> std::ops::Deref for FixedSizeBinary<N> {
     }
 }
 
-
 impl<const N: usize> parquet::data_type::AsBytes for FixedSizeBinary<N> {
     fn as_bytes(&self) -> &[u8] {
         &self.0
