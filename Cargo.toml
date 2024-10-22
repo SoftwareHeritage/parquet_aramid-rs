@@ -1,0 +1,40 @@
+[package]
+name = "parquet_aramid"
+readme = "README.md"
+edition = "2021"
+description = "Query engine using Parquet tables as a Key-Value store"
+repository = "https://gitlab.softwareheritage.org/swh/devel/parquet_aramid-rs"
+license = "GPL-3.0-or-later"
+keywords = ["parquet", "key-value"]
+categories = ["database-implementations"]
+rust-version = "1.79"
+
+[dependencies]
+anyhow = { version="1.0.79" }
+crossbeam-queue = "0.3.11"
+itertools = "0.13.0"
+num_cpus = "1.16.0"
+rdst = { version = "0.20.14" }
+
+# Logging
+tracing = "0.1.40"
+
+# Database
+bytes = "1.7.1"
+arrow = "53.1.0"
+object_store = { version = "0.11.0", default-features = false }
+parquet = { version = "53.1.0", default-features = false, features = ["arrow", "async", "object_store", "zstd"]}
+url = "2.2"
+
+# Elias-Fano index
+epserde = "0.6.1"
+sux = "0.4.1"
+
+# Tokio & async
+futures = "0.3.30"
+tokio = { version = "1.0", features = ["rt-multi-thread"] }
+tokio-stream = "0.1"
+
+[features]
+default = []
+rayon = ["rdst/multi-threaded"]
