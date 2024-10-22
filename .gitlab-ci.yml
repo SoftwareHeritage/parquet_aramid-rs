@@ -1,0 +1,36 @@
+stages:
+  - test
+
+rust-latest-default-features:
+  stage: test
+  image: docker.io/library/rust:latest
+  cache:
+    - key: rust-latest-default-features
+      paths:
+        - target/
+  script:
+    - cargo build
+    - cargo test
+
+rust-1.76-default-features:
+  stage: test
+  image: docker.io/library/rust:1.76
+  cache:
+    - key: rust-1.76-default-features
+      paths:
+        - target/
+  script:
+    - cargo build
+    - cargo test
+
+rust-nightly-default-features:
+  stage: test
+  image: docker.io/rustlang/rust:nightly
+  cache:
+    - key: rust-nightly-default-features
+      paths:
+        - target/
+  script:
+    - cargo build
+    - cargo test
+  allow_failure: true
