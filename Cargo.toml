@@ -7,7 +7,7 @@ repository = "https://gitlab.softwareheritage.org/swh/devel/parquet_aramid-rs"
 license = "GPL-3.0-or-later"
 keywords = ["parquet", "key-value"]
 categories = ["database-implementations"]
-rust-version = "1.79"
+rust-version = "1.80"
 
 [dependencies]
 anyhow = { version="1.0.79" }
