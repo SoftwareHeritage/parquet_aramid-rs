@@ -28,7 +28,7 @@ SQL database (like [sqlite](https://www.sqlite.org/)), or
 
 ## Example usage
 
-```no_run
+```rust,no_run
 # tokio_test::block_on(async {
 use std::path::PathBuf;
 use std::sync::Arc;
