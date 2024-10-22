@@ -26,9 +26,10 @@ use sux::traits::IndexedDict;
 use tokio::task::JoinSet;
 use tracing::instrument;
 
-use super::metrics::{RowGroupsSelectionMetrics, RowsSelectionMetrics, TableScanInitMetrics};
-use super::reader::FileReader;
-use super::types::IndexKey;
+use crate::metrics::{RowGroupsSelectionMetrics, RowsSelectionMetrics, TableScanInitMetrics};
+use crate::reader::FileReader;
+use crate::types::IndexKey;
+use crate::ReaderBuilderConfigurator;
 
 pub struct Table {
     pub files: Box<[Arc<FileReader>]>,
@@ -560,20 +561,4 @@ async fn filter_rows<K: IndexKey>(
     metrics.rows_selected_by_page_index = row_selection.row_count();
     drop(timer_guard);
     Ok((metrics, row_selection))
-}
-
-pub trait ReaderBuilderConfigurator: Send + Sync + 'static {
-    fn configure<R: AsyncFileReader>(
-        &self,
-        reader_builder: ParquetRecordBatchStreamBuilder<R>,
-    ) -> Result<ParquetRecordBatchStreamBuilder<R>>;
-}
-
-impl ReaderBuilderConfigurator for () {
-    fn configure<R: AsyncFileReader>(
-        &self,
-        reader_builder: ParquetRecordBatchStreamBuilder<R>,
-    ) -> Result<ParquetRecordBatchStreamBuilder<R>> {
-        Ok(reader_builder)
-    }
 }

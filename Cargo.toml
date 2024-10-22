@@ -35,6 +35,9 @@ futures = "0.3.30"
 tokio = { version = "1.0", features = ["rt-multi-thread"] }
 tokio-stream = "0.1"
 
+[dev-dependencies]
+tokio-test = "0.4.4"
+
 [features]
 default = []
 rayon = ["rdst/multi-threaded"]
