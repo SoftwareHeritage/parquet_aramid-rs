@@ -58,15 +58,17 @@ let configurator = Arc::new(
     FilterFixedSizeBinaryConfigurator::with_sorted_keys("key_column", Arc::clone(&keys))
 );
 
-// Read the table
-table
+// Select which files/row groups/pages to read
+let (_metrics, stream) = table
     .stream_for_keys("key_column", Arc::clone(&keys), configurator)
     .await
-    .unwrap()
-    .for_each(|batch| async move {
-        // Iterates on every row with b"abcd" as its value in "key_column"
-        println!("{:?}", batch);
-    });
+    .unwrap();
+
+// Read the table
+stream.for_each(|batch| async move {
+    // Iterates on every row with b"abcd" as its value in "key_column"
+    println!("{:?}", batch);
+});
 
 # })
 ```

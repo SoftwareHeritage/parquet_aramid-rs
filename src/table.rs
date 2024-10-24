@@ -235,7 +235,7 @@ impl Table {
         column: &'static str,
         keys: Arc<Vec<K>>,
         builder_configurator: Arc<impl ReaderBuilderConfigurator>,
-    ) -> Result<impl Stream<Item = Result<RecordBatch>> + 'static> {
+    ) -> Result<(TableScanInitMetrics, impl Stream<Item = Result<RecordBatch>> + 'static)> {
         let column_idx: usize = self
             .schema
             .index_of(column)
@@ -345,8 +345,6 @@ impl Table {
         .into_iter()
         .sum();
 
-        tracing::debug!("Scan init metrics: {:#?}", metrics);
-
         let (tx, rx) = tokio::sync::mpsc::channel(num_cpus::get() * 2); // arbitrary constant
         for mut reader_stream in reader_streams {
             let tx = tx.clone();
@@ -366,7 +364,7 @@ impl Table {
             });
         }
 
-        Ok(tokio_stream::wrappers::ReceiverStream::new(rx))
+        Ok((metrics, tokio_stream::wrappers::ReceiverStream::new(rx)))
     }
 }
 
