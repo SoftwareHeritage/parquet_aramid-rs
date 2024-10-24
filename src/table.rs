@@ -81,10 +81,10 @@ impl Table {
             .map(|file| async move {
                 file.reader()
                     .await
-                    .context("Could not get reader")?
+                    .with_context(|| format!("Could not get reader for {}", file.object_meta().location))?
                     .get_metadata()
                     .await
-                    .context("Could not get file metadata")
+                    .with_context(|| format!("Could not get metadata for {}", file.object_meta().location))
             })
             .collect::<JoinSet<_>>()
             .join_all()
