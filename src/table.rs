@@ -48,6 +48,18 @@ impl Table {
         let objects_meta: Vec<_> = store
             .list(Some(&path))
             .map(|res| res.map(Arc::new))
+            // Filter out files whose extension is not .parquet
+            .filter_map(|res| std::future::ready(match res {
+                Ok(object_meta) => match object_meta.location.filename() {
+                    Some(filename) => if filename.ends_with(".parquet") {
+                        Some(Ok(object_meta))
+                    } else {
+                        None
+                    },
+                    None => Some(Err(anyhow!("File has no name")))
+                },
+                Err(e) => Some(Err(e.into())),
+            }))
             .try_collect()
             .await
             .with_context(|| format!("Could not list {} in {}", path, store))?;
