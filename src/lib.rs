@@ -5,6 +5,7 @@
 
 #![doc = include_str!("../README.md")]
 
+pub use arrow;
 pub use parquet;
 use parquet::arrow::async_reader::AsyncFileReader;
 use parquet::arrow::ParquetRecordBatchStreamBuilder;
