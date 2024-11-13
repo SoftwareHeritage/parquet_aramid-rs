@@ -13,15 +13,12 @@ use parquet::file::metadata::ParquetMetaData;
 /// Wrapper for [`AsyncFileReader`] that only reads its metadata the first time it is requested
 pub struct CachingParquetFileReader<R: AsyncFileReader> {
     inner: R,
-    metadata: Option<Arc<ParquetMetaData>>,
+    metadata: Arc<ParquetMetaData>,
 }
 
 impl<R: AsyncFileReader> CachingParquetFileReader<R> {
-    pub fn new(inner: R) -> Self {
-        Self {
-            inner,
-            metadata: None,
-        }
+    pub fn new(inner: R, metadata: Arc<ParquetMetaData>) -> Self {
+        Self { inner, metadata }
     }
 }
 
@@ -34,18 +31,7 @@ impl<R: AsyncFileReader> AsyncFileReader for CachingParquetFileReader<R> {
     }
 
     fn get_metadata(&mut self) -> BoxFuture<'_, parquet::errors::Result<Arc<ParquetMetaData>>> {
-        Box::pin(async {
-            match &self.metadata {
-                Some(metadata) => Ok(Arc::clone(metadata)),
-                None => match self.inner.get_metadata().await {
-                    Ok(metadata) => {
-                        self.metadata = Some(Arc::clone(&metadata));
-                        Ok(metadata)
-                    }
-                    Err(e) => Err(e),
-                },
-            }
-        })
+        Box::pin(std::future::ready(Ok(Arc::clone(&self.metadata))))
     }
 
     fn get_byte_ranges(

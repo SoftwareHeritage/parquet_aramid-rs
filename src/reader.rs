@@ -19,6 +19,7 @@ use parquet::arrow::arrow_reader::ArrowReaderOptions;
 use parquet::arrow::async_reader::{AsyncFileReader, ParquetObjectReader};
 use parquet::arrow::ParquetRecordBatchStreamBuilder;
 use parquet::arrow::ProjectionMask;
+use parquet::file::metadata::ParquetMetaData;
 use rdst::RadixSort;
 use sux::dict::elias_fano::{EfDict, EfSeq, EliasFano, EliasFanoBuilder};
 use sux::prelude::{BitFieldVec, BitVec, IndexedDict, SelectZeroAdaptConst, Types};
@@ -69,6 +70,7 @@ pub struct FileReader {
     store: Arc<dyn ObjectStore>,
     object_meta: Arc<ObjectMeta>,
     pool: ParquetFileReaderPool<CachingParquetFileReader<ParquetObjectReader>>,
+    parquet_metadata: Arc<ParquetMetaData>,
     ef_index: OnceLock<EfIndex>,
     base_ef_index_path: PathBuf,
 }
@@ -78,14 +80,18 @@ impl FileReader {
         store: Arc<dyn ObjectStore>,
         object_meta: Arc<ObjectMeta>,
         base_ef_index_path: PathBuf,
-    ) -> Self {
-        Self {
+    ) -> Result<Self> {
+        let mut reader = ParquetObjectReader::new(Arc::clone(&store), (*object_meta).clone())
+            .with_preload_column_index(true)
+            .with_preload_offset_index(true);
+        Ok(Self {
             store,
             object_meta,
+            parquet_metadata: reader.get_metadata().await?,
             pool: ParquetFileReaderPool::default(),
             ef_index: OnceLock::new(),
             base_ef_index_path,
-        }
+        })
     }
 
     pub fn object_meta(&self) -> &ObjectMeta {
@@ -113,8 +119,10 @@ impl FileReader {
         self.pool.try_get_reader(|| {
             Ok(CachingParquetFileReader::new(
                 ParquetObjectReader::new(Arc::clone(&self.store), (*self.object_meta).clone())
-                    .with_preload_column_index(true)
-                    .with_preload_offset_index(true),
+                    // Don't load the page index again, it was already loaded with a previous reader
+                    .with_preload_column_index(false)
+                    .with_preload_offset_index(false),
+                Arc::clone(&self.parquet_metadata),
             ))
         })
     }
@@ -163,21 +171,6 @@ impl FileReader {
         .context("Could not get stream builder")?;
         let schema = stream_builder.schema();
         let parquet_schema = stream_builder.parquet_schema(); // clone
-
-        /*
-        let row_groups_metadata = stream_builder.metadata().row_groups();
-        let max_value = arrow::compute::max(
-            StatisticsConverter::try_new(column_name, schema, parquet_schema)
-                .context("Could not build statistics converter")?
-                .row_group_maxes(row_groups_metadata)
-                .context("Could not read row group maxes")?
-                .as_primitive_opt::<UInt64Type>()
-                .with_context(|| {
-                    format!("{} column could not be cast as UInt64Array", column_name)
-                })?,
-        )
-        .with_context(|| format!("{} column contains null statistics", column_name))?;
-        */
 
         let column_idx = parquet_schema
             .columns()

@@ -84,11 +84,14 @@ impl Table {
                             .join("/"),
                     ),
                 )
-                .map(Arc::new)
+                // future of Result<FileReader> -> future of Result<Arc<FileReader>>
+                .map(|res| res.map(Arc::new))
             })
             .collect::<JoinSet<_>>()
             .join_all()
-            .await;
+            .await
+            .into_iter()
+            .collect::<Result<Vec<_>>>()?;
 
         tracing::trace!("Reading file metadata");
         let file_metadata: Vec<_> = files
