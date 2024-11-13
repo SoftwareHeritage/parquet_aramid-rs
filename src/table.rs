@@ -49,17 +49,21 @@ impl Table {
             .list(Some(&path))
             .map(|res| res.map(Arc::new))
             // Filter out files whose extension is not .parquet
-            .filter_map(|res| std::future::ready(match res {
-                Ok(object_meta) => match object_meta.location.filename() {
-                    Some(filename) => if filename.ends_with(".parquet") {
-                        Some(Ok(object_meta))
-                    } else {
-                        None
+            .filter_map(|res| {
+                std::future::ready(match res {
+                    Ok(object_meta) => match object_meta.location.filename() {
+                        Some(filename) => {
+                            if filename.ends_with(".parquet") {
+                                Some(Ok(object_meta))
+                            } else {
+                                None
+                            }
+                        }
+                        None => Some(Err(anyhow!("File has no name"))),
                     },
-                    None => Some(Err(anyhow!("File has no name")))
-                },
-                Err(e) => Some(Err(e.into())),
-            }))
+                    Err(e) => Some(Err(e.into())),
+                })
+            })
             .try_collect()
             .await
             .with_context(|| format!("Could not list {} in {}", path, store))?;
@@ -93,10 +97,14 @@ impl Table {
             .map(|file| async move {
                 file.reader()
                     .await
-                    .with_context(|| format!("Could not get reader for {}", file.object_meta().location))?
+                    .with_context(|| {
+                        format!("Could not get reader for {}", file.object_meta().location)
+                    })?
                     .get_metadata()
                     .await
-                    .with_context(|| format!("Could not get metadata for {}", file.object_meta().location))
+                    .with_context(|| {
+                        format!("Could not get metadata for {}", file.object_meta().location)
+                    })
             })
             .collect::<JoinSet<_>>()
             .join_all()
@@ -247,7 +255,10 @@ impl Table {
         column: &'static str,
         keys: Arc<Vec<K>>,
         builder_configurator: Arc<impl ReaderBuilderConfigurator>,
-    ) -> Result<(TableScanInitMetrics, impl Stream<Item = Result<RecordBatch>> + 'static)> {
+    ) -> Result<(
+        TableScanInitMetrics,
+        impl Stream<Item = Result<RecordBatch>> + 'static,
+    )> {
         let column_idx: usize = self
             .schema
             .index_of(column)

@@ -9,8 +9,8 @@ use anyhow::{Context, Result};
 use arrow::array::*;
 use arrow::buffer::BooleanBuffer;
 use arrow::datatypes::*;
-use parquet::data_type::AsBytes;
 use parquet::arrow::arrow_reader::statistics::StatisticsConverter;
+use parquet::data_type::AsBytes;
 use parquet::file::metadata::RowGroupMetaData;
 use parquet::file::metadata::{ParquetColumnIndex, ParquetOffsetIndex};
 
@@ -22,9 +22,7 @@ use parquet::file::metadata::{ParquetColumnIndex, ParquetOffsetIndex};
 /// * checking row group statistics, in [`check_column_chunk`] (optional)
 /// * checking Bloom Filter, implemented through [`AsBytes`] (required)
 /// * checking the page index, in [`check_page_index`] (optional)
-pub trait IndexKey:
-    AsBytes + Clone + Send + Sync + 'static
-{
+pub trait IndexKey: AsBytes + Clone + Send + Sync + 'static {
     /// Returns this key as a value in the file-level Elias-Fano index, if it supports it.
     fn as_ef_key(&self) -> Option<usize>;
 
