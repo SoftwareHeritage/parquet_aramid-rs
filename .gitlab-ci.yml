@@ -12,11 +12,11 @@ rust-latest-default-features:
     - cargo build
     - cargo test
 
-rust-1.80-default-features:
+rust-1.82-default-features:
   stage: test
-  image: docker.io/library/rust:1.80
+  image: docker.io/library/rust:1.82
   cache:
-    - key: rust-1.80-default-features
+    - key: rust-1.82-default-features
       paths:
         - target/
   script:

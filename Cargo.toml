@@ -8,7 +8,7 @@ repository = "https://gitlab.softwareheritage.org/swh/devel/parquet_aramid-rs"
 license = "GPL-3.0-or-later"
 keywords = ["parquet", "key-value"]
 categories = ["database-implementations"]
-rust-version = "1.80"
+rust-version = "1.82"
 
 [dependencies]
 anyhow = { version="1.0.79" }
@@ -37,6 +37,9 @@ tokio = { version = "1.0", features = ["rt-multi-thread"] }
 tokio-stream = "0.1"
 
 [dev-dependencies]
+ar_row = "1.1.0"
+ar_row_derive = "1.1.0"
+tempfile = "3.7.1"
 tokio-test = "0.4.4"
 
 [features]

@@ -583,6 +583,7 @@ async fn filter_rows<K: IndexKey>(
     );
     metrics.rows_pruned_by_page_index = row_selection.skipped_row_count();
     metrics.rows_selected_by_page_index = row_selection.row_count();
+    assert_eq!(metrics.rows_pruned_by_page_index + metrics.rows_selected_by_page_index, num_rows_in_selected_row_groups);
     drop(timer_guard);
     Ok((metrics, row_selection))
 }
