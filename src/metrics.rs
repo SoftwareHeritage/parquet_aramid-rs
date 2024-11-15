@@ -64,21 +64,32 @@ pub struct TableScanInitMetrics {
     pub total_time: Timing,
 }
 
+impl std::ops::AddAssign for TableScanInitMetrics {
+    fn add_assign(&mut self, rhs: Self) {
+        self.files_pruned_by_ef_index += rhs.files_pruned_by_ef_index;
+        self.files_selected_by_ef_index += rhs.files_selected_by_ef_index;
+        self.row_groups_selection += rhs.row_groups_selection;
+        self.rows_selection += rhs.rows_selection;
+        self.open_builder_time.add(rhs.open_builder_time.get());
+        self.read_metadata_time.add(rhs.read_metadata_time.get());
+        self.ef_file_index_eval_time
+            .add(rhs.ef_file_index_eval_time.get());
+        self.total_time.add(rhs.total_time.get());
+    }
+}
+impl std::ops::Add for TableScanInitMetrics {
+    type Output = Self;
+
+    fn add(mut self, rhs: Self) -> Self::Output {
+        self += rhs;
+        self
+    }
+}
 impl std::iter::Sum for TableScanInitMetrics {
-    fn sum<I: std::iter::Iterator<Item = TableScanInitMetrics>>(it: I) -> Self {
+    fn sum<I: std::iter::Iterator<Item = Self>>(it: I) -> Self {
         let mut sum = Self::default();
-        {
-            for item in it {
-                sum.files_pruned_by_ef_index += item.files_pruned_by_ef_index;
-                sum.files_selected_by_ef_index += item.files_selected_by_ef_index;
-                sum.row_groups_selection += item.row_groups_selection;
-                sum.rows_selection += item.rows_selection;
-                sum.open_builder_time.add(item.open_builder_time.get());
-                sum.read_metadata_time.add(item.read_metadata_time.get());
-                sum.ef_file_index_eval_time
-                    .add(item.ef_file_index_eval_time.get());
-                sum.total_time.add(item.total_time.get());
-            }
+        for item in it {
+            sum += item;
         }
         sum
     }
@@ -114,6 +125,23 @@ impl std::ops::AddAssign for RowGroupsSelectionMetrics {
             .add(rhs.eval_bloom_filter_time.get());
     }
 }
+impl std::ops::Add for RowGroupsSelectionMetrics {
+    type Output = Self;
+
+    fn add(mut self, rhs: Self) -> Self::Output {
+        self += rhs;
+        self
+    }
+}
+impl std::iter::Sum for RowGroupsSelectionMetrics {
+    fn sum<I: std::iter::Iterator<Item = Self>>(it: I) -> Self {
+        let mut sum = Self::default();
+        for item in it {
+            sum += item;
+        }
+        sum
+    }
+}
 
 #[derive(Debug, Default)]
 pub struct RowsSelectionMetrics {
@@ -134,5 +162,22 @@ impl std::ops::AddAssign for RowsSelectionMetrics {
 
         self.eval_page_index_time
             .add(rhs.eval_page_index_time.get());
+    }
+}
+impl std::ops::Add for RowsSelectionMetrics {
+    type Output = Self;
+
+    fn add(mut self, rhs: Self) -> Self::Output {
+        self += rhs;
+        self
+    }
+}
+impl std::iter::Sum for RowsSelectionMetrics {
+    fn sum<I: std::iter::Iterator<Item = Self>>(it: I) -> Self {
+        let mut sum = Self::default();
+        for item in it {
+            sum += item;
+        }
+        sum
     }
 }
