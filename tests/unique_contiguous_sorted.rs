@@ -46,7 +46,10 @@ async fn make_table(db_path: &Path, ef_indexes_path: &Path) -> Result<Table> {
     Ok(table)
 }
 
-async fn check_results(table: &Table, needles: Vec<u64>) -> Result<(Vec<u64>, TableScanInitMetrics)> {
+async fn check_results(
+    table: &Table,
+    needles: Vec<u64>,
+) -> Result<(Vec<u64>, TableScanInitMetrics)> {
     let needles = Arc::new(needles);
     let configurator = Arc::new(FilterPrimitiveConfigurator::<UInt64Type>::with_sorted_keys(
         "key",
@@ -135,11 +138,9 @@ async fn test_without_ef() -> Result<()> {
                     metrics
                 );
                 assert_eq!(
-                    rows_selected_by_page_index as u64,
-                    ROWS_PER_PAGE,
+                    rows_selected_by_page_index as u64, ROWS_PER_PAGE,
                     "mismatched rows_selected_by_page_index for same-page needles {:?}, {:#?}",
-                    needles,
-                    metrics
+                    needles, metrics
                 );
                 assert_eq!(
                     rows_pruned_by_page_index as u64,
@@ -149,7 +150,10 @@ async fn test_without_ef() -> Result<()> {
                     metrics
                 );
             }
-            _ => panic!("Mismatched metrics for same-page needles {:?}: {:#?}", needles, metrics),
+            _ => panic!(
+                "Mismatched metrics for same-page needles {:?}: {:#?}",
+                needles, metrics
+            ),
         }
     }
 
@@ -157,169 +161,178 @@ async fn test_without_ef() -> Result<()> {
     let (needles, metrics) = check_results(&table, vec![0, 1, 50]).await?;
     match metrics {
         TableScanInitMetrics {
-                files_pruned_by_ef_index: 0,
-                files_selected_by_ef_index: 0,
-                row_groups_selection:
-                    RowGroupsSelectionMetrics {
-                        row_groups_pruned_by_statistics,
-                        row_groups_selected_by_statistics: 1,
-                        row_groups_pruned_by_bloom_filters: 0, // write_database() does not build BFs
-                        row_groups_selected_by_bloom_filters: 0,
-                        eval_row_groups_statistics_time: _,
-                        filter_by_row_groups_statistics_time: _,
-                        read_bloom_filter_time: _,
-                        eval_bloom_filter_time: _,
-                    },
-                rows_selection:
-                    RowsSelectionMetrics {
-                        rows_pruned_by_page_index,
-                        rows_selected_by_page_index,
-                        row_groups_pruned_by_page_index: 0, // not implemented yet
-                        row_groups_selected_by_page_index: 0,
-                        eval_page_index_time: _,
-                    },
-                ef_file_index_eval_time: _,
-                open_builder_time: _,
-                read_metadata_time: _,
-                total_time: _,
-            } => {
-                assert_eq!(
+            files_pruned_by_ef_index: 0,
+            files_selected_by_ef_index: 0,
+            row_groups_selection:
+                RowGroupsSelectionMetrics {
                     row_groups_pruned_by_statistics,
-                    NUM_ROW_GROUPS - 1,
-                    "mismatched row_groups_pruned_by_statistics for same-group needles {:?}, {:#?}",
-                    needles,
-                    metrics
-                );
-                assert_eq!(
-                    rows_selected_by_page_index as u64,
-                    ROWS_PER_PAGE * 6, // pages 0 and 5 are expected results, pages 1 to 4 are
-                                       // false positives
-                    "mismatched rows_selected_by_page_index for same-group needles {:?}, {:#?}",
-                    needles,
-                    metrics
-                );
-                assert_eq!(
-                    rows_pruned_by_page_index as u64,
-                    (PAGES_PER_GROUP - 6) * ROWS_PER_PAGE,
-                    "mismatched rows_pruned_by_page_index for same-group needles {:?}, {:#?}",
-                    needles,
-                    metrics
-                );
-            }
-            _ => panic!("Mismatched metrics for same-group needles {:?}: {:#?}", needles, metrics),
+                    row_groups_selected_by_statistics: 1,
+                    row_groups_pruned_by_bloom_filters: 0, // write_database() does not build BFs
+                    row_groups_selected_by_bloom_filters: 0,
+                    eval_row_groups_statistics_time: _,
+                    filter_by_row_groups_statistics_time: _,
+                    read_bloom_filter_time: _,
+                    eval_bloom_filter_time: _,
+                },
+            rows_selection:
+                RowsSelectionMetrics {
+                    rows_pruned_by_page_index,
+                    rows_selected_by_page_index,
+                    row_groups_pruned_by_page_index: 0, // not implemented yet
+                    row_groups_selected_by_page_index: 0,
+                    eval_page_index_time: _,
+                },
+            ef_file_index_eval_time: _,
+            open_builder_time: _,
+            read_metadata_time: _,
+            total_time: _,
+        } => {
+            assert_eq!(
+                row_groups_pruned_by_statistics,
+                NUM_ROW_GROUPS - 1,
+                "mismatched row_groups_pruned_by_statistics for same-group needles {:?}, {:#?}",
+                needles,
+                metrics
+            );
+            assert_eq!(
+                rows_selected_by_page_index as u64,
+                ROWS_PER_PAGE * 6, // pages 0 and 5 are expected results, pages 1 to 4 are
+                // false positives
+                "mismatched rows_selected_by_page_index for same-group needles {:?}, {:#?}",
+                needles,
+                metrics
+            );
+            assert_eq!(
+                rows_pruned_by_page_index as u64,
+                (PAGES_PER_GROUP - 6) * ROWS_PER_PAGE,
+                "mismatched rows_pruned_by_page_index for same-group needles {:?}, {:#?}",
+                needles,
+                metrics
+            );
+        }
+        _ => panic!(
+            "Mismatched metrics for same-group needles {:?}: {:#?}",
+            needles, metrics
+        ),
     }
 
     // All results in the same file, but two different row groups
     let (needles, metrics) = check_results(&table, vec![0, 1, ROWS_PER_GROUP]).await?;
     match metrics {
         TableScanInitMetrics {
-                files_pruned_by_ef_index: 0,
-                files_selected_by_ef_index: 0,
-                row_groups_selection:
-                    RowGroupsSelectionMetrics {
-                        row_groups_pruned_by_statistics,
-                        row_groups_selected_by_statistics: 2,
-                        row_groups_pruned_by_bloom_filters: 0, // write_database() does not build BFs
-                        row_groups_selected_by_bloom_filters: 0,
-                        eval_row_groups_statistics_time: _,
-                        filter_by_row_groups_statistics_time: _,
-                        read_bloom_filter_time: _,
-                        eval_bloom_filter_time: _,
-                    },
-                rows_selection:
-                    RowsSelectionMetrics {
-                        rows_pruned_by_page_index,
-                        rows_selected_by_page_index,
-                        row_groups_pruned_by_page_index: 0, // not implemented yet
-                        row_groups_selected_by_page_index: 0,
-                        eval_page_index_time: _,
-                    },
-                ef_file_index_eval_time: _,
-                open_builder_time: _,
-                read_metadata_time: _,
-                total_time: _,
-            } => {
-                assert_eq!(
+            files_pruned_by_ef_index: 0,
+            files_selected_by_ef_index: 0,
+            row_groups_selection:
+                RowGroupsSelectionMetrics {
                     row_groups_pruned_by_statistics,
-                    NUM_ROW_GROUPS - 2,
-                    "mismatched row_groups_pruned_by_statistics for same-file needles {:?}, {:#?}",
-                    needles,
-                    metrics
-                );
-                assert_eq!(
-                    rows_selected_by_page_index as u64,
-                    (PAGES_PER_GROUP + 1) * ROWS_PER_PAGE, // pages 0 and 10 are expected results,
-                                                           // pages pages 1 to 9 are false
-                                                           // positives
-                    "mismatched rows_selected_by_page_index for same-file needles {:?}, {:#?}",
-                    needles,
-                    metrics
-                );
-                assert_eq!(
-                    rows_pruned_by_page_index as u64,
-                    (PAGES_PER_GROUP - 1) * ROWS_PER_PAGE, // pages 11 to 19 (inclusive)
-                    "mismatched rows_pruned_by_page_index for same-file needles {:?}, {:#?}",
-                    needles,
-                    metrics
-                );
-            }
-            _ => panic!("Mismatched metrics for same-file needles {:?}: {:#?}", needles, metrics),
+                    row_groups_selected_by_statistics: 2,
+                    row_groups_pruned_by_bloom_filters: 0, // write_database() does not build BFs
+                    row_groups_selected_by_bloom_filters: 0,
+                    eval_row_groups_statistics_time: _,
+                    filter_by_row_groups_statistics_time: _,
+                    read_bloom_filter_time: _,
+                    eval_bloom_filter_time: _,
+                },
+            rows_selection:
+                RowsSelectionMetrics {
+                    rows_pruned_by_page_index,
+                    rows_selected_by_page_index,
+                    row_groups_pruned_by_page_index: 0, // not implemented yet
+                    row_groups_selected_by_page_index: 0,
+                    eval_page_index_time: _,
+                },
+            ef_file_index_eval_time: _,
+            open_builder_time: _,
+            read_metadata_time: _,
+            total_time: _,
+        } => {
+            assert_eq!(
+                row_groups_pruned_by_statistics,
+                NUM_ROW_GROUPS - 2,
+                "mismatched row_groups_pruned_by_statistics for same-file needles {:?}, {:#?}",
+                needles,
+                metrics
+            );
+            assert_eq!(
+                rows_selected_by_page_index as u64,
+                (PAGES_PER_GROUP + 1) * ROWS_PER_PAGE, // pages 0 and 10 are expected results,
+                // pages pages 1 to 9 are false
+                // positives
+                "mismatched rows_selected_by_page_index for same-file needles {:?}, {:#?}",
+                needles,
+                metrics
+            );
+            assert_eq!(
+                rows_pruned_by_page_index as u64,
+                (PAGES_PER_GROUP - 1) * ROWS_PER_PAGE, // pages 11 to 19 (inclusive)
+                "mismatched rows_pruned_by_page_index for same-file needles {:?}, {:#?}",
+                needles,
+                metrics
+            );
+        }
+        _ => panic!(
+            "Mismatched metrics for same-file needles {:?}: {:#?}",
+            needles, metrics
+        ),
     }
 
     // Results from different files
     let (needles, metrics) = check_results(&table, vec![12, 1234]).await?;
     match metrics {
         TableScanInitMetrics {
-                files_pruned_by_ef_index: 0,
-                files_selected_by_ef_index: 0,
-                row_groups_selection:
-                    RowGroupsSelectionMetrics {
-                        row_groups_pruned_by_statistics,
-                        row_groups_selected_by_statistics: 13,
-                        row_groups_pruned_by_bloom_filters: 0, // write_database() does not build BFs
-                        row_groups_selected_by_bloom_filters: 0,
-                        eval_row_groups_statistics_time: _,
-                        filter_by_row_groups_statistics_time: _,
-                        read_bloom_filter_time: _,
-                        eval_bloom_filter_time: _,
-                    },
-                rows_selection:
-                    RowsSelectionMetrics {
-                        rows_pruned_by_page_index,
-                        rows_selected_by_page_index,
-                        row_groups_pruned_by_page_index: 0, // not implemented yet
-                        row_groups_selected_by_page_index: 0,
-                        eval_page_index_time: _,
-                    },
-                ef_file_index_eval_time: _,
-                open_builder_time: _,
-                read_metadata_time: _,
-                total_time: _,
-            } => {
-                assert_eq!(
+            files_pruned_by_ef_index: 0,
+            files_selected_by_ef_index: 0,
+            row_groups_selection:
+                RowGroupsSelectionMetrics {
                     row_groups_pruned_by_statistics,
-                    NUM_ROW_GROUPS  - 13,
-                    "mismatched row_groups_pruned_by_statistics for different-file needles {:?}, {:#?}",
-                    needles,
-                    metrics
-                );
-                assert_eq!(
-                    rows_selected_by_page_index as u64,
-                    1230, // almost every page in the 13 selected groups (excludes the first one,
-                          // and the last handful)
-                    "mismatched rows_selected_by_page_index for different-file needles {:?}, {:#?}",
-                    needles,
-                    metrics
-                );
-                assert_eq!(
-                    rows_pruned_by_page_index as u64,
-                    10 + 60, // pages 0 and 123 to 129 (inclusive)
-                    "mismatched rows_pruned_by_page_index for different-file needles {:?}, {:#?}",
-                    needles,
-                    metrics
-                );
-            }
-            _ => panic!("Mismatched metrics for different-file needles {:?}: {:#?}", needles, metrics),
+                    row_groups_selected_by_statistics: 13,
+                    row_groups_pruned_by_bloom_filters: 0, // write_database() does not build BFs
+                    row_groups_selected_by_bloom_filters: 0,
+                    eval_row_groups_statistics_time: _,
+                    filter_by_row_groups_statistics_time: _,
+                    read_bloom_filter_time: _,
+                    eval_bloom_filter_time: _,
+                },
+            rows_selection:
+                RowsSelectionMetrics {
+                    rows_pruned_by_page_index,
+                    rows_selected_by_page_index,
+                    row_groups_pruned_by_page_index: 0, // not implemented yet
+                    row_groups_selected_by_page_index: 0,
+                    eval_page_index_time: _,
+                },
+            ef_file_index_eval_time: _,
+            open_builder_time: _,
+            read_metadata_time: _,
+            total_time: _,
+        } => {
+            assert_eq!(
+                row_groups_pruned_by_statistics,
+                NUM_ROW_GROUPS - 13,
+                "mismatched row_groups_pruned_by_statistics for different-file needles {:?}, {:#?}",
+                needles,
+                metrics
+            );
+            assert_eq!(
+                rows_selected_by_page_index as u64,
+                1230, // almost every page in the 13 selected groups (excludes the first one,
+                // and the last handful)
+                "mismatched rows_selected_by_page_index for different-file needles {:?}, {:#?}",
+                needles,
+                metrics
+            );
+            assert_eq!(
+                rows_pruned_by_page_index as u64,
+                10 + 60, // pages 0 and 123 to 129 (inclusive)
+                "mismatched rows_pruned_by_page_index for different-file needles {:?}, {:#?}",
+                needles,
+                metrics
+            );
+        }
+        _ => panic!(
+            "Mismatched metrics for different-file needles {:?}: {:#?}",
+            needles, metrics
+        ),
     }
 
     Ok(())
@@ -397,11 +410,9 @@ async fn test_with_ef() -> Result<()> {
                     metrics
                 );
                 assert_eq!(
-                    rows_selected_by_page_index as u64,
-                    ROWS_PER_PAGE,
+                    rows_selected_by_page_index as u64, ROWS_PER_PAGE,
                     "mismatched rows_selected_by_page_index for same-page needles {:?}, {:#?}",
-                    needles,
-                    metrics
+                    needles, metrics
                 );
                 assert_eq!(
                     rows_pruned_by_page_index as u64,
@@ -411,7 +422,10 @@ async fn test_with_ef() -> Result<()> {
                     metrics
                 );
             }
-            _ => panic!("Mismatched metrics for same-page needles {:?}: {:#?}", needles, metrics),
+            _ => panic!(
+                "Mismatched metrics for same-page needles {:?}: {:#?}",
+                needles, metrics
+            ),
         }
     }
 
@@ -419,56 +433,59 @@ async fn test_with_ef() -> Result<()> {
     let (needles, metrics) = check_results(&table, vec![12, 1234]).await?;
     match metrics {
         TableScanInitMetrics {
-                files_pruned_by_ef_index: 8,
-                files_selected_by_ef_index: 2,
-                row_groups_selection:
-                    RowGroupsSelectionMetrics {
-                        row_groups_pruned_by_statistics,
-                        row_groups_selected_by_statistics: 2, // one in each file
-                        row_groups_pruned_by_bloom_filters: 0, // write_database() does not build BFs
-                        row_groups_selected_by_bloom_filters: 0,
-                        eval_row_groups_statistics_time: _,
-                        filter_by_row_groups_statistics_time: _,
-                        read_bloom_filter_time: _,
-                        eval_bloom_filter_time: _,
-                    },
-                rows_selection:
-                    RowsSelectionMetrics {
-                        rows_pruned_by_page_index,
-                        rows_selected_by_page_index,
-                        row_groups_pruned_by_page_index: 0, // not implemented yet
-                        row_groups_selected_by_page_index: 0,
-                        eval_page_index_time: _,
-                    },
-                ef_file_index_eval_time: _,
-                open_builder_time: _,
-                read_metadata_time: _,
-                total_time: _,
-            } => {
-                assert_eq!(
+            files_pruned_by_ef_index: 8,
+            files_selected_by_ef_index: 2,
+            row_groups_selection:
+                RowGroupsSelectionMetrics {
                     row_groups_pruned_by_statistics,
-                    ROW_GROUPS_PER_FILE * 2 - 2, // two files opened, all but one in each file was pruned
-                    "mismatched row_groups_pruned_by_statistics for different-file needles {:?}, {:#?}",
-                    needles,
-                    metrics
-                );
-                assert_eq!(
-                    rows_selected_by_page_index as u64,
-                    20, // no false positive, there is only one needle per file so no issue with
-                        // the "convex hull" matching other pages
-                    "mismatched rows_selected_by_page_index for different-file needles {:?}, {:#?}",
-                    needles,
-                    metrics
-                );
-                assert_eq!(
-                    rows_pruned_by_page_index as u64,
-                    (PAGES_PER_GROUP * 2 - 2) * ROWS_PER_PAGE,
-                    "mismatched rows_pruned_by_page_index for different-file needles {:?}, {:#?}",
-                    needles,
-                    metrics
-                );
-            }
-            _ => panic!("Mismatched metrics for different-file needles {:?}: {:#?}", needles, metrics),
+                    row_groups_selected_by_statistics: 2, // one in each file
+                    row_groups_pruned_by_bloom_filters: 0, // write_database() does not build BFs
+                    row_groups_selected_by_bloom_filters: 0,
+                    eval_row_groups_statistics_time: _,
+                    filter_by_row_groups_statistics_time: _,
+                    read_bloom_filter_time: _,
+                    eval_bloom_filter_time: _,
+                },
+            rows_selection:
+                RowsSelectionMetrics {
+                    rows_pruned_by_page_index,
+                    rows_selected_by_page_index,
+                    row_groups_pruned_by_page_index: 0, // not implemented yet
+                    row_groups_selected_by_page_index: 0,
+                    eval_page_index_time: _,
+                },
+            ef_file_index_eval_time: _,
+            open_builder_time: _,
+            read_metadata_time: _,
+            total_time: _,
+        } => {
+            assert_eq!(
+                row_groups_pruned_by_statistics,
+                ROW_GROUPS_PER_FILE * 2 - 2, // two files opened, all but one in each file was pruned
+                "mismatched row_groups_pruned_by_statistics for different-file needles {:?}, {:#?}",
+                needles,
+                metrics
+            );
+            assert_eq!(
+                rows_selected_by_page_index as u64,
+                20, // no false positive, there is only one needle per file so no issue with
+                // the "convex hull" matching other pages
+                "mismatched rows_selected_by_page_index for different-file needles {:?}, {:#?}",
+                needles,
+                metrics
+            );
+            assert_eq!(
+                rows_pruned_by_page_index as u64,
+                (PAGES_PER_GROUP * 2 - 2) * ROWS_PER_PAGE,
+                "mismatched rows_pruned_by_page_index for different-file needles {:?}, {:#?}",
+                needles,
+                metrics
+            );
+        }
+        _ => panic!(
+            "Mismatched metrics for different-file needles {:?}: {:#?}",
+            needles, metrics
+        ),
     }
 
     Ok(())
