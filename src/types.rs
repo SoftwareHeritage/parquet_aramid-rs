@@ -49,7 +49,7 @@ pub trait IndexKey: AsBytes + Clone + Send + Sync + 'static {
 }
 
 /// Newtype for `[u8; N]` that implements [`AsBytes`]
-#[derive(Hash, PartialEq, Eq, PartialOrd, Ord, Clone, Debug)]
+#[derive(Hash, PartialEq, Eq, PartialOrd, Ord, Clone, Debug, Copy)]
 pub struct FixedSizeBinary<const N: usize>(pub [u8; N]);
 
 impl<const N: usize> From<[u8; N]> for FixedSizeBinary<N> {

@@ -3,17 +3,14 @@
 // License: GNU General Public License version 3, or any later version
 // See top-level LICENSE file for more information
 
-//! Every key in the database is unique, and keys are 0 to 1_000_000, in that order.
+//! Every key in the database is unique, and keys are `u64` from 0 to 1_000_000, in that order.
 
 use std::path::Path;
 use std::sync::Arc;
 
 use anyhow::{anyhow, Context, Result};
-use ar_row::deserialize::ArRowDeserialize;
 use arrow::array::*;
-use arrow::datatypes::DataType;
 use arrow::datatypes::*;
-use futures::stream::TryStreamExt;
 
 use parquet_aramid::metrics::*;
 use parquet_aramid::reader_builder_config::FilterPrimitiveConfigurator;
@@ -29,10 +26,12 @@ const ROWS_PER_FILE: u64 = ROWS_PER_GROUP * ROW_GROUPS_PER_FILE;
 const NUM_ROW_GROUPS: u64 = ROW_GROUPS_PER_FILE * NUM_FILES;
 
 async fn make_table(db_path: &Path, ef_indexes_path: &Path) -> Result<Table> {
+    // generates [[0, 1, 2, 3], [4, 5, 6, 7], ...]
     let haystack =
         (0..NUM_ROW_GROUPS).map(|i| (i * ROWS_PER_GROUP..(i + 1) * ROWS_PER_GROUP).collect());
-    write_database::<UInt64Array>(haystack, DataType::UInt64, db_path)
-        .context("Could not write DB")?;
+
+    let with_bloom_filters = false; // too slow in debug build
+    write_database(haystack, db_path, with_bloom_filters).context("Could not write DB")?;
 
     let url = url::Url::from_file_path(db_path)
         .map_err(|()| anyhow!("Could not convert temp dir path to URL"))?;
@@ -46,46 +45,43 @@ async fn make_table(db_path: &Path, ef_indexes_path: &Path) -> Result<Table> {
     Ok(table)
 }
 
-async fn check_results(
+pub async fn check_u64_results(
     table: &Table,
     needles: Vec<u64>,
+    make_row: impl FnMut(u64, u64) -> Row,
 ) -> Result<(Vec<u64>, TableScanInitMetrics)> {
-    let needles = Arc::new(needles);
-    let configurator = Arc::new(FilterPrimitiveConfigurator::<UInt64Type>::with_sorted_keys(
-        "key",
-        needles.clone(),
-    ));
-    let (metrics, stream) = table
-        .stream_for_keys("key", needles.clone(), configurator)
-        .await
-        .context("Could not stream from table")?;
-
-    let result_batches: Vec<RecordBatch> = stream
-        .try_collect()
-        .await
-        .context("Could not collect stream")?;
-    let mut results: Vec<_> = result_batches
-        .into_iter()
-        .flat_map(|batch| Row::from_record_batch(batch).expect("Could not deserialize batch"))
-        .collect();
-    results.sort_unstable();
-    let expected_results: Vec<_> = needles
-        .iter()
-        .map(|&needle| Row {
-            key: needle,
-            row_id: needle,
-            page_id: needle % ROWS_PER_FILE % ROWS_PER_GROUP / ROWS_PER_PAGE,
-            batch_id: needle / ROWS_PER_GROUP,
-            row_group_id: needle % ROWS_PER_FILE / ROWS_PER_GROUP,
-            file_id: needle / ROWS_PER_FILE,
-        })
-        .collect();
-    assert_eq!(
-        results, expected_results,
-        "Unexpected results when searching for {:?}. Metrics: {:#?}",
-        needles, metrics
+    let configurator = FilterPrimitiveConfigurator::<UInt64Type>::with_sorted_keys(
+        "key_u64",
+        Arc::new(needles.clone()),
     );
-    Ok(((*needles).clone(), metrics))
+    check_results::<u64>(
+        table,
+        needles.clone(),
+        "key_u64",
+        needles,
+        configurator,
+        make_row,
+    )
+    .await
+}
+
+fn make_row<Needle>(_needle: Needle, key: u64) -> Row {
+    let row_id = key;
+    Row {
+        key_u64: key,
+        key_u64_bloom: key,
+        key_binary_bloom: format!("item{:>21}", key).into_bytes().into(),
+        key_fixedsizebinary_bloom: ar_row::FixedSizeBinary(
+            format!("item{:>21}", key).into_bytes()[..]
+                .try_into()
+                .unwrap(),
+        ),
+        row_id,
+        page_id: row_id % ROWS_PER_FILE % ROWS_PER_GROUP / ROWS_PER_PAGE,
+        batch_id: row_id / ROWS_PER_GROUP,
+        row_group_id: row_id % ROWS_PER_FILE / ROWS_PER_GROUP,
+        file_id: row_id / ROWS_PER_FILE,
+    }
 }
 
 #[tokio::test]
@@ -97,10 +93,10 @@ async fn test_without_ef() -> Result<()> {
     let table = make_table(db_dir.path(), &ef_indexes_path).await?;
 
     // All results in the same page
-    let metrics1 = check_results(&table, vec![0]).await?;
-    let metrics2 = check_results(&table, vec![1]).await?;
-    let metrics3 = check_results(&table, vec![1234]).await?;
-    let metrics4 = check_results(&table, vec![0, 1]).await?;
+    let metrics1 = check_u64_results(&table, vec![0], &make_row::<u64>).await?;
+    let metrics2 = check_u64_results(&table, vec![1], &make_row::<u64>).await?;
+    let metrics3 = check_u64_results(&table, vec![1234], &make_row::<u64>).await?;
+    let metrics4 = check_u64_results(&table, vec![0, 1], &make_row::<u64>).await?;
     for (needles, metrics) in [metrics1, metrics2, metrics3, metrics4] {
         match metrics {
             TableScanInitMetrics {
@@ -110,7 +106,7 @@ async fn test_without_ef() -> Result<()> {
                     RowGroupsSelectionMetrics {
                         row_groups_pruned_by_statistics,
                         row_groups_selected_by_statistics: 1,
-                        row_groups_pruned_by_bloom_filters: 0, // write_database() does not build BFs
+                        row_groups_pruned_by_bloom_filters: 0, // no BF on the 'keys' column
                         row_groups_selected_by_bloom_filters: 0,
                         eval_row_groups_statistics_time: _,
                         filter_by_row_groups_statistics_time: _,
@@ -158,7 +154,7 @@ async fn test_without_ef() -> Result<()> {
     }
 
     // All results in the same row group, but different pages
-    let (needles, metrics) = check_results(&table, vec![0, 1, 50]).await?;
+    let (needles, metrics) = check_u64_results(&table, vec![0, 1, 50], &make_row::<u64>).await?;
     match metrics {
         TableScanInitMetrics {
             files_pruned_by_ef_index: 0,
@@ -217,7 +213,8 @@ async fn test_without_ef() -> Result<()> {
     }
 
     // All results in the same file, but two different row groups
-    let (needles, metrics) = check_results(&table, vec![0, 1, ROWS_PER_GROUP]).await?;
+    let (needles, metrics) =
+        check_u64_results(&table, vec![0, 1, ROWS_PER_GROUP], &make_row::<u64>).await?;
     match metrics {
         TableScanInitMetrics {
             files_pruned_by_ef_index: 0,
@@ -277,7 +274,7 @@ async fn test_without_ef() -> Result<()> {
     }
 
     // Results from different files
-    let (needles, metrics) = check_results(&table, vec![12, 1234]).await?;
+    let (needles, metrics) = check_u64_results(&table, vec![12, 1234], &make_row::<u64>).await?;
     match metrics {
         TableScanInitMetrics {
             files_pruned_by_ef_index: 0,
@@ -352,12 +349,12 @@ async fn test_with_ef() -> Result<()> {
     for file in &table.files {
         // Build index
         let ef_values = file
-            .build_ef_index("key")
+            .build_ef_index("key_u64")
             .await
             .expect("Could not build Elias-Fano index");
 
         // Write index to disk
-        let index_path = file.ef_index_path("key");
+        let index_path = file.ef_index_path("key_u64");
         let mut ef_file = std::fs::File::create_new(&index_path).unwrap();
         ef_values
             .serialize(&mut ef_file)
@@ -365,14 +362,14 @@ async fn test_with_ef() -> Result<()> {
     }
 
     table
-        .mmap_ef_index("key")
+        .mmap_ef_index("key_u64")
         .context("Could not mmap EF indexes")?;
 
     // All results in the same page
-    let metrics1 = check_results(&table, vec![0]).await?;
-    let metrics2 = check_results(&table, vec![1]).await?;
-    let metrics3 = check_results(&table, vec![1234]).await?;
-    let metrics4 = check_results(&table, vec![0, 1]).await?;
+    let metrics1 = check_u64_results(&table, vec![0], &make_row::<u64>).await?;
+    let metrics2 = check_u64_results(&table, vec![1], &make_row::<u64>).await?;
+    let metrics3 = check_u64_results(&table, vec![1234], &make_row::<u64>).await?;
+    let metrics4 = check_u64_results(&table, vec![0, 1], &make_row::<u64>).await?;
     for (needles, metrics) in [metrics1, metrics2, metrics3, metrics4] {
         match metrics {
             TableScanInitMetrics {
@@ -430,7 +427,7 @@ async fn test_with_ef() -> Result<()> {
     }
 
     // Results from different files
-    let (needles, metrics) = check_results(&table, vec![12, 1234]).await?;
+    let (needles, metrics) = check_u64_results(&table, vec![12, 1234], &make_row::<u64>).await?;
     match metrics {
         TableScanInitMetrics {
             files_pruned_by_ef_index: 8,
