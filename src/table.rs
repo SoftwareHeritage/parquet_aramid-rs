@@ -8,6 +8,7 @@ use std::sync::Arc;
 
 use anyhow::{anyhow, ensure, Context, Result};
 use arrow::array::*;
+use arrow::buffer::BooleanBuffer;
 use arrow::datatypes::*;
 use futures::stream::FuturesUnordered;
 use futures::FutureExt;
@@ -410,12 +411,10 @@ async fn filter_row_groups<K: IndexKey>(
             .context("Could not check row group statistics")?
     };
 
-    let Some(row_groups_match_statistics) = row_groups_match_statistics else {
-        // We don't know how to filter on row group statistics, so we
-        // unconditionally select every row group
-        // TODO: we could at least filter on Bloom Filters here
-        return Ok((metrics, (0..parquet_metadata.row_groups().len()).collect()));
-    };
+    // If the IndexKey does not implement statistics checks, assume statistics matched every row
+    // group.
+    let row_groups_match_statistics = row_groups_match_statistics
+        .unwrap_or_else(|| BooleanBuffer::new_set(parquet_metadata.row_groups().len()));
 
     let mut selected_row_groups = Vec::new();
     for (row_group_idx, row_group_matches_statistics) in
