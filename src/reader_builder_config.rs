@@ -85,7 +85,7 @@ impl<K: ArrowPrimitiveType<Native: Ord> + Send + Sync + 'static> ReaderBuilderCo
                 let mut matches =
                     arrow::array::builder::BooleanBufferBuilder::new(batch.num_rows());
                 let haystack = batch
-                    .column(column_idx)
+                    .column(0) // we selected a single column
                     .as_primitive_opt::<K>()
                     .unwrap_or_else(|| {
                         panic!("key column is not a primitive array of {}", K::DATA_TYPE)
@@ -155,7 +155,7 @@ impl<const BINARY_SIZE: usize> ReaderBuilderConfigurator
                 let mut matches =
                     arrow::array::builder::BooleanBufferBuilder::new(batch.num_rows());
                 let haystack = batch
-                    .column(column_idx)
+                    .column(0) // we selected a single column
                     .as_fixed_size_binary_opt()
                     .expect("key column is not a FixedSizeBinaryArray");
                 for key in haystack {
