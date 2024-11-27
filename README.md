@@ -168,3 +168,36 @@ bne returned.
 
 See the [`ParquetRecordBatchStreamBuilder`] documentation for an exhaustive
 overview of all the filtering the `configurator` can do.
+
+## Data types
+
+This crate operates on logical types as decoded by the Arrow-based `parquet` crate.
+
+All types can be scanned, but there are some restrictions on what types can
+be used as keys (to filter on):
+
+Fully supported types:
+
+* unsigned integers (`u64`, `u32`, `u16`, `u8`)
+* signed integers (`i64`, `i32`, `i16`, `i8`)
+
+Partially supported types (compared against Bloom Filters but not EF indexes. And comparing against
+statistics is not implemented yet):
+
+* [`FixedSizeBinary`](crate::types::FixedSizeBinary)
+* [`Binary`](crate::types::Binary) (covers both [`BinaryType`](arrow::array::types::BinaryType`)
+  and [`LargeBinaryType`](arrow::array::types::LargeBinaryType)
+
+Not currently supported:
+
+* time and date types
+* duration and interval types
+* decimal numbers (`Decimal128` and `Decimal256`)
+* strings (`Utf8` and `LargeUtf8`)
+
+Won't be supported in the forseeable future:
+
+* floating-point numbers (`Float16`, `Float32`, `Float64`), due to equality not being available.
+* structs
+* unions
+* lists and maps

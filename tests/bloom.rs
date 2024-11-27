@@ -10,7 +10,6 @@ use std::path::Path;
 use std::sync::Arc;
 
 use anyhow::{anyhow, Context, Result};
-use arrow::array::*;
 use arrow::datatypes::*;
 
 use parquet_aramid::metrics::*;
@@ -72,6 +71,10 @@ fn make_row<Needle>(_needle: Needle, key: u64) -> Row {
     }
 }
 
+/// Tests u64, Binary, and FixedSizeBinary.
+///
+/// They are all tested in a single test because generating the data file takes a while,
+/// so we should avoid doing it more than once.
 #[tokio::test]
 async fn test_bloom() -> Result<()> {
     let db_dir = tempfile::tempdir().context("Could not get tempdir")?;
@@ -92,6 +95,26 @@ async fn test_bloom() -> Result<()> {
             keys,
             configurator,
             make_row::<u64>,
+        )
+    })
+    .await?;
+    test_bloom_inner::<parquet_aramid::types::Binary<Box<[u8]>>, _>(|keys: Vec<u64>| {
+        let make_needle = |key: u64| {
+            parquet_aramid::types::Binary(
+                format!("item{:>21}", key).into_bytes().into_boxed_slice(),
+            )
+        };
+        let configurator = FilterBinaryConfigurator::<i32, _>::with_sorted_keys(
+            "key_binary_bloom",
+            Arc::new(keys.iter().copied().map(make_needle).collect()),
+        );
+        check_results::<parquet_aramid::types::Binary<Box<[u8]>>>(
+            &table,
+            keys.iter().copied().map(make_needle).collect(),
+            "key_binary_bloom",
+            keys.clone(),
+            configurator,
+            make_row::<parquet_aramid::types::Binary<Box<[u8]>>>,
         )
     })
     .await?;

@@ -148,7 +148,7 @@ pub fn write_database(
     Ok(())
 }
 
-pub async fn check_results<Needle: IndexKey + Ord + Copy>(
+pub async fn check_results<Needle: IndexKey + Ord + Clone>(
     table: &Table,
     needles: Vec<Needle>,
     key_column: &'static str,
@@ -176,7 +176,7 @@ pub async fn check_results<Needle: IndexKey + Ord + Copy>(
     let expected_results: Vec<_> = needles
         .iter()
         .zip(expected_keys.iter())
-        .map(|(&needle, &key)| make_row(needle, key))
+        .map(|(needle, &key)| make_row(needle.clone(), key))
         .collect();
     assert_eq!(
         results, expected_results,

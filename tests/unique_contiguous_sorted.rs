@@ -9,7 +9,6 @@ use std::path::Path;
 use std::sync::Arc;
 
 use anyhow::{anyhow, Context, Result};
-use arrow::array::*;
 use arrow::datatypes::*;
 
 use parquet_aramid::metrics::*;

@@ -83,9 +83,7 @@ impl<const N: usize> IndexKey for FixedSizeBinary<N> {
         _statistics_converter: &StatisticsConverter,
         _row_groups_metadata: &[RowGroupMetaData],
     ) -> Result<Option<BooleanBuffer>> {
-        // Should we even bother implementing this? Assuming a random distribution of SWHIDs among
-        // row groups, and the default row group size, it's very unlikely we can prune a row group
-        // based on statistics.
+        // TODO
         Ok(None)
     }
     fn check_page_index<'a, I: IntoIterator<Item = &'a usize> + Copy>(
@@ -95,7 +93,57 @@ impl<const N: usize> IndexKey for FixedSizeBinary<N> {
         _column_offset_index: &ParquetOffsetIndex,
         _row_group_indices: I,
     ) -> Result<Option<BooleanBuffer>> {
-        // ditto
+        // TODO
+        Ok(None)
+    }
+}
+
+/// Newtype for `impl AsRef<[u8]>` that implements [`AsBytes`]
+#[derive(Hash, PartialEq, Eq, PartialOrd, Ord, Clone, Debug, Copy)]
+pub struct Binary<T: AsRef<[u8]> + Clone + Sync + Send + 'static>(pub T);
+
+impl<T: AsRef<[u8]> + Clone + Sync + Send + 'static> From<T> for Binary<T> {
+    fn from(value: T) -> Self {
+        Binary(value)
+    }
+}
+
+impl<T: AsRef<[u8]> + Clone + Sync + Send + 'static> std::ops::Deref for Binary<T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl<T: AsRef<[u8]> + Clone + Sync + Send + 'static> AsBytes for Binary<T> {
+    fn as_bytes(&self) -> &[u8] {
+        self.0.as_ref()
+    }
+}
+
+impl<T: AsRef<[u8]> + Clone + Sync + Send + 'static> IndexKey for Binary<T> {
+    #[inline(always)]
+    fn as_ef_key(&self) -> Option<usize> {
+        None
+    }
+
+    fn check_column_chunk(
+        _keys: &[Self],
+        _statistics_converter: &StatisticsConverter,
+        _row_groups_metadata: &[RowGroupMetaData],
+    ) -> Result<Option<BooleanBuffer>> {
+        // TODO
+        Ok(None)
+    }
+    fn check_page_index<'a, I: IntoIterator<Item = &'a usize> + Copy>(
+        _keys: &[Self],
+        _statistics_converter: &StatisticsConverter<'a>,
+        _column_page_index: &ParquetColumnIndex,
+        _column_offset_index: &ParquetOffsetIndex,
+        _row_group_indices: I,
+    ) -> Result<Option<BooleanBuffer>> {
+        // TODO
         Ok(None)
     }
 }
