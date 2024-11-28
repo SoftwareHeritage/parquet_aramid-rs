@@ -18,9 +18,9 @@ use parquet::arrow::*;
 use parquet::basic::Compression;
 use parquet::file::properties::WriterProperties;
 
+use parquet_aramid::config::Configurator;
 use parquet_aramid::metrics::*;
 use parquet_aramid::types::IndexKey;
-use parquet_aramid::ReaderBuilderConfigurator;
 use parquet_aramid::Table;
 
 pub const ROWS_PER_PAGE: u64 = 10;
@@ -153,7 +153,7 @@ pub async fn check_results<Needle: IndexKey + Ord + Clone>(
     needles: Vec<Needle>,
     key_column: &'static str,
     expected_keys: Vec<u64>,
-    configurator: impl ReaderBuilderConfigurator,
+    configurator: impl Configurator,
     mut make_row: impl FnMut(Needle, u64) -> Row,
 ) -> Result<(Vec<Needle>, TableScanInitMetrics)> {
     Row::check_schema(&schema())

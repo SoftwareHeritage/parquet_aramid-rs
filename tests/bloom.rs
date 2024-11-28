@@ -12,8 +12,8 @@ use std::sync::Arc;
 use anyhow::{anyhow, Context, Result};
 use arrow::datatypes::*;
 
+use parquet_aramid::config::*;
 use parquet_aramid::metrics::*;
-use parquet_aramid::reader_builder_config::*;
 use parquet_aramid::types::IndexKey;
 use parquet_aramid::Table;
 

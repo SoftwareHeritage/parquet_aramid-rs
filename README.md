@@ -35,8 +35,8 @@ use std::sync::Arc;
 
 use futures::stream::StreamExt;
 use parquet_aramid::Table;
+use parquet_aramid::config::FilterFixedSizeBinaryConfigurator;
 use parquet_aramid::types::FixedSizeBinary;
-use parquet_aramid::reader_builder_config::FilterFixedSizeBinaryConfigurator;
 
 // Location of the Parquet table
 let url = url::Url::parse("file:///srv/data/my_table/").unwrap();
@@ -83,8 +83,8 @@ use std::sync::Arc;
 use epserde::ser::Serialize;
 use futures::stream::StreamExt;
 use parquet_aramid::Table;
+use parquet_aramid::config::FilterFixedSizeBinaryConfigurator;
 use parquet_aramid::types::FixedSizeBinary;
-use parquet_aramid::reader_builder_config::FilterFixedSizeBinaryConfigurator;
 use tokio::task::JoinSet;
 
 // Location of the Parquet table

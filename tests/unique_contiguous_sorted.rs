@@ -11,8 +11,8 @@ use std::sync::Arc;
 use anyhow::{anyhow, Context, Result};
 use arrow::datatypes::*;
 
+use parquet_aramid::config::FilterPrimitiveConfigurator;
 use parquet_aramid::metrics::*;
-use parquet_aramid::reader_builder_config::FilterPrimitiveConfigurator;
 use parquet_aramid::Table;
 
 mod common;

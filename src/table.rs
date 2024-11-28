@@ -27,10 +27,10 @@ use sux::traits::IndexedDict;
 use tokio::task::JoinSet;
 use tracing::instrument;
 
+use crate::config::Configurator;
 use crate::metrics::{RowGroupsSelectionMetrics, RowsSelectionMetrics, TableScanInitMetrics};
 use crate::reader::FileReader;
 use crate::types::IndexKey;
-use crate::ReaderBuilderConfigurator;
 
 pub struct Table {
     pub files: Box<[Arc<FileReader>]>,
@@ -258,7 +258,7 @@ impl Table {
         &'a self,
         column: &'static str,
         keys: Arc<Vec<K>>,
-        builder_configurator: Arc<impl ReaderBuilderConfigurator>,
+        config: Arc<impl Configurator>,
     ) -> Result<(
         TableScanInitMetrics,
         impl Stream<Item = Result<RecordBatch>> + 'static,
@@ -277,7 +277,7 @@ impl Table {
             selected_readers_and_metrics
                 .into_iter()
                 .map(move |(keys, reader, mut metrics)| {
-                    let builder_configurator = Arc::clone(&builder_configurator);
+                    let config = Arc::clone(&config);
                     async move {
                         let total_timer_guard = metrics.total_time.timer();
 
@@ -347,8 +347,8 @@ impl Table {
                         drop(total_timer_guard);
                         Ok((
                             metrics,
-                            builder_configurator
-                                .configure(stream_builder)
+                            config
+                                .configure_stream_builder(stream_builder)
                                 .context(
                                     "Could not finish configuring ParquetRecordBatchStreamBuilder",
                                 )?
