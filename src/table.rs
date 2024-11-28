@@ -6,12 +6,11 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use anyhow::{anyhow, ensure, Context, Result};
 use arrow::array::*;
 use arrow::buffer::BooleanBuffer;
 use arrow::datatypes::*;
 use futures::stream::FuturesUnordered;
-use futures::FutureExt;
+use futures::{FutureExt, TryFutureExt};
 use futures::{Stream, StreamExt, TryStreamExt};
 use itertools::Itertools;
 use object_store::path::Path;
@@ -32,6 +31,46 @@ use crate::metrics::{RowGroupsSelectionMetrics, RowsSelectionMetrics, TableScanI
 use crate::reader::FileReader;
 use crate::types::IndexKey;
 
+#[derive(thiserror::Error, Debug)]
+pub enum NewTableError {
+    #[error("inconsistent object store {store}: {error}")]
+    InconsistentObjectStore {
+        error: String,
+        store: Arc<dyn ObjectStore>,
+    },
+    #[error("Could not list {path} in {store}: {error}")]
+    List {
+        path: Path,
+        store: Arc<dyn ObjectStore>,
+        error: object_store::Error,
+    },
+    #[error("Could not open {path} in {store}: {error}")]
+    Open {
+        path: Path,
+        store: Arc<dyn ObjectStore>,
+        error: anyhow::Error,
+    },
+    #[error("No files in {path} in {store}")]
+    EmptyDirectory {
+        path: Path,
+        store: Arc<dyn ObjectStore>,
+    },
+    #[error("Schema of {path1} and {path2} in {store} differ: {metadata1:?} != {metadata2:?}")]
+    SchemaMismatch {
+        path1: Path,
+        path2: Path,
+        metadata1: parquet::file::metadata::FileMetaData,
+        metadata2: parquet::file::metadata::FileMetaData,
+        store: Arc<dyn ObjectStore>,
+    },
+    #[error("Internal parquet_aramid error: {error}")]
+    Internal { error: String },
+    #[error("Could not read schema: {error}")]
+    UnsupportedSchema {
+        error: parquet::errors::ParquetError,
+    },
+}
+
 pub struct Table {
     pub files: Box<[Arc<FileReader>]>,
     schema: Arc<Schema>,
@@ -44,7 +83,7 @@ impl Table {
         store: Arc<dyn ObjectStore>,
         path: Path,
         ef_indexes_path: PathBuf,
-    ) -> Result<Self> {
+    ) -> Result<Self, NewTableError> {
         tracing::trace!("Fetching object metadata");
         let objects_meta: Vec<_> = store
             .list(Some(&path))
@@ -60,14 +99,16 @@ impl Table {
                                 None
                             }
                         }
-                        None => Some(Err(anyhow!("File has no name"))),
+                        None => Some(Err(NewTableError::InconsistentObjectStore {
+                            error: format!("File in {} has no name", path),
+                            store,
+                        })),
                     },
-                    Err(e) => Some(Err(e.into())),
+                    Err(error) => Some(Err(NewTableError::List { path, store, error })),
                 })
             })
             .try_collect()
-            .await
-            .with_context(|| format!("Could not list {} in {}", path, store))?;
+            .await?;
 
         tracing::trace!("Opening files");
         let files: Vec<_> = objects_meta
@@ -87,12 +128,17 @@ impl Table {
                 )
                 // future of Result<FileReader> -> future of Result<Arc<FileReader>>
                 .map(|res| res.map(Arc::new))
+                .map_err(|error| NewTableError::Open {
+                    path: object_meta.location,
+                    store,
+                    error,
+                })
             })
             .collect::<JoinSet<_>>()
             .join_all()
             .await
             .into_iter()
-            .collect::<Result<Vec<_>>>()?;
+            .collect::<Result<Vec<_>, _>>()?;
 
         tracing::trace!("Reading file metadata");
         let file_metadata: Vec<_> = files
@@ -101,20 +147,28 @@ impl Table {
             .map(|file| async move {
                 file.reader()
                     .await
-                    .with_context(|| {
-                        format!("Could not get reader for {}", file.object_meta().location)
+                    .map_err(|e| NewTableError::Internal {
+                        error: format!(
+                            "Could not get reader for {}: {}",
+                            file.object_meta().location,
+                            e
+                        ),
                     })?
                     .get_metadata()
                     .await
-                    .with_context(|| {
-                        format!("Could not get metadata for {}", file.object_meta().location)
+                    .map_err(|e| NewTableError::Internal {
+                        error: format!(
+                            "Could not get metadata for {}: {}",
+                            file.object_meta().location,
+                            e
+                        ),
                     })
             })
             .collect::<JoinSet<_>>()
             .join_all()
             .await
             .into_iter()
-            .collect::<Result<Vec<_>>>()?;
+            .collect::<Result<Vec<_>, _>>()?;
         let mut file_metadata: Vec<_> = file_metadata
             .iter()
             .map(|file_metadata| file_metadata.file_metadata())
@@ -123,18 +177,19 @@ impl Table {
         tracing::trace!("Checking schemas are consistent");
         let last_file_metadata = file_metadata
             .pop()
-            .ok_or_else(|| anyhow!("No files in {}", path))?;
+            .ok_or_else(|| NewTableError::EmptyDirectory { path, store })?;
         for (object_meta, other_file_metadata) in
             std::iter::zip(objects_meta.iter(), file_metadata.into_iter())
         {
-            ensure!(
-                last_file_metadata.schema_descr() == other_file_metadata.schema_descr(),
-                "Schema of {} and {} differ: {:?} != {:?}",
-                objects_meta.last().unwrap().location,
-                object_meta.location,
-                last_file_metadata,
-                other_file_metadata
-            );
+            if last_file_metadata.schema_descr() != other_file_metadata.schema_descr() {
+                return Err(NewTableError::SchemaMismatch {
+                    path1: objects_meta.last().unwrap().location,
+                    path2: object_meta.location,
+                    metadata1: last_file_metadata.clone(),
+                    metadata2: other_file_metadata.clone(),
+                    store,
+                });
+            }
         }
 
         tracing::trace!("Done");
@@ -147,7 +202,7 @@ impl Table {
                     // easily check for equality because it includes the creation date
                     last_file_metadata.key_value_metadata(),
                 )
-                .context("Could not read schema")?,
+                .map_err(|error| NewTableError::UnsupportedSchema { error })?,
             ),
             path,
         })
