@@ -203,7 +203,10 @@ impl Table {
                 let keys = keys.clone();
                 async move {
                     let mut metrics = TableScanInitMetrics::default();
-                    let timer_guard = metrics.ef_file_index_eval_time.timer();
+                    let timer_guard = (
+                        metrics.total_time.timer(),
+                        metrics.ef_file_index_eval_time.timer(),
+                    );
                     let Some(ef_index) = file_reader.ef_index(column) else {
                         // can't check the index, so we have to assume the keys may be in the file.
                         tracing::warn!("Missing Elias-Fano file-level index on column {}", column);
