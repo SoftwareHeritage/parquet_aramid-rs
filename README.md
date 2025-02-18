@@ -53,14 +53,14 @@ let table = Table::new(store, path, ef_indexes_path).await.unwrap();
 table.mmap_ef_index("key_column").unwrap();
 
 // Filter out rows whose key is not b"abcd"
-let keys = Arc::new(vec![FixedSizeBinary(*b"abcd")]);
+let keys = Arc::from(vec![FixedSizeBinary(*b"abcd")]);
 let configurator = Arc::new(
     FilterFixedSizeBinaryConfigurator::with_sorted_keys("key_column", Arc::clone(&keys))
 );
 
 // Select which files/row groups/pages to read
 let (_metrics, stream) = table
-    .stream_for_keys("key_column", Arc::clone(&keys), configurator)
+    .stream_for_keys("key_column", &keys, configurator)
     .await
     .unwrap();
 

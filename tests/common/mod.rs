@@ -158,9 +158,9 @@ pub async fn check_results<Needle: IndexKey + Ord + Clone>(
 ) -> Result<(Vec<Needle>, TableScanInitMetrics)> {
     Row::check_schema(&schema())
         .map_err(|e| anyhow::anyhow!("Cannot deserialize to given Row type: {}", e))?;
-    let needles = Arc::new(needles);
+    let arc_needles = Arc::from(needles.clone());
     let (metrics, stream) = table
-        .stream_for_keys(key_column, needles.clone(), Arc::new(configurator))
+        .stream_for_keys(key_column, &arc_needles, Arc::new(configurator))
         .await
         .context("Could not stream from table")?;
 
@@ -173,7 +173,7 @@ pub async fn check_results<Needle: IndexKey + Ord + Clone>(
         .flat_map(|batch| Row::from_record_batch(batch).expect("Could not deserialize batch"))
         .collect();
     results.sort_unstable();
-    let expected_results: Vec<_> = needles
+    let expected_results: Vec<_> = arc_needles
         .iter()
         .zip(expected_keys.iter())
         .map(|(needle, &key)| make_row(needle.clone(), key))
@@ -183,5 +183,5 @@ pub async fn check_results<Needle: IndexKey + Ord + Clone>(
         "Unexpected results when searching for {:?}. Metrics: {:#?}",
         expected_keys, metrics
     );
-    Ok(((*needles).clone(), metrics))
+    Ok((needles, metrics))
 }

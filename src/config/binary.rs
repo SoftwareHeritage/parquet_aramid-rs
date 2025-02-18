@@ -103,19 +103,19 @@ impl<O: OffsetSizeTrait, Key: AsRef<[u8]> + Clone + Sync + Send + 'static> Confi
 /// `BINARY_SIZE` must fit in a `i32`, as Arrow does not support larger arrays.
 pub struct FilterFixedSizeBinaryConfigurator<const BINARY_SIZE: usize> {
     column_name: &'static str,
-    keys: Arc<Vec<FixedSizeBinary<BINARY_SIZE>>>,
+    keys: Arc<[FixedSizeBinary<BINARY_SIZE>]>,
 }
 
 impl<const BINARY_SIZE: usize> FilterFixedSizeBinaryConfigurator<BINARY_SIZE> {
     pub fn new(column_name: &'static str, mut keys: Vec<FixedSizeBinary<BINARY_SIZE>>) -> Self {
         keys.sort_unstable();
-        Self::with_sorted_keys(column_name, Arc::new(keys))
+        Self::with_sorted_keys(column_name, Arc::from(keys))
     }
 
     /// Same as [`Self::new`] but assumes keys are already sorted
     pub fn with_sorted_keys(
         column_name: &'static str,
-        keys: Arc<Vec<FixedSizeBinary<BINARY_SIZE>>>,
+        keys: Arc<[FixedSizeBinary<BINARY_SIZE>]>,
     ) -> Self {
         Self { column_name, keys }
     }

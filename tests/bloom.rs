@@ -127,7 +127,7 @@ async fn test_bloom() -> Result<()> {
             );
             let configurator = FilterFixedSizeBinaryConfigurator::<{ FIXEDSIZEBINARY_SIZE as _ }>::with_sorted_keys(
                 "key_fixedsizebinary_bloom",
-                Arc::new(keys.iter().copied().map(make_needle).collect()),
+                Arc::from(Vec::from_iter(keys.iter().copied().map(make_needle))),
             );
             check_results::<parquet_aramid::types::FixedSizeBinary::<{ FIXEDSIZEBINARY_SIZE as _ }>>(
                 &table,

@@ -8,7 +8,6 @@ use std::sync::Arc;
 
 use anyhow::{anyhow, ensure, Context, Result};
 use arrow::array::*;
-use arrow::buffer::BooleanBuffer;
 use arrow::datatypes::*;
 use futures::stream::FuturesUnordered;
 use futures::FutureExt;
@@ -189,10 +188,10 @@ impl Table {
     pub async fn readers_filtered_by_keys<'a, K: IndexKey>(
         &'a self,
         column: &'static str,
-        keys: Arc<Vec<K>>,
+        keys: &Arc<[K]>,
     ) -> Result<(
         Vec<TableScanInitMetrics>,
-        Vec<(Arc<Vec<K>>, impl AsyncFileReader, TableScanInitMetrics)>,
+        Vec<(Arc<[K]>, impl AsyncFileReader, TableScanInitMetrics)>,
     )> {
         // Filter out whole files based on the file-level Elias-Fano index
         let readers_and_metrics = self
@@ -200,7 +199,7 @@ impl Table {
             .iter()
             .map(|file_reader| {
                 let file_reader = Arc::clone(file_reader);
-                let keys = keys.clone();
+                let keys = Arc::clone(keys);
                 async move {
                     let mut metrics = TableScanInitMetrics::default();
                     let timer_guard = (
@@ -214,7 +213,7 @@ impl Table {
                         let reader = file_reader.reader().await?;
                         return Ok((keys, Some(reader), metrics));
                     };
-                    let keys_in_file: Vec<K> = keys
+                    let keys_in_file: Arc<[K]> = keys
                         .iter()
                         .filter(|key| match key.as_ef_key() {
                             Some(key) => ef_index.contains(key),
@@ -226,12 +225,12 @@ impl Table {
                         // Skip the file altogether
                         metrics.files_pruned_by_ef_index += 1;
                         drop(timer_guard);
-                        Ok((Arc::new(vec![]), None, metrics))
+                        Ok((keys_in_file, None, metrics))
                     } else {
                         metrics.files_selected_by_ef_index += 1;
                         drop(timer_guard);
                         let reader = file_reader.reader().await?;
-                        Ok((Arc::new(keys_in_file), Some(reader), metrics))
+                        Ok((keys_in_file, Some(reader), metrics))
                     }
                 }
             })
@@ -260,7 +259,7 @@ impl Table {
     pub async fn stream_for_keys<'a, K: IndexKey>(
         &'a self,
         column: &'static str,
-        keys: Arc<Vec<K>>,
+        keys: &Arc<[K]>,
         config: Arc<impl Configurator>,
     ) -> Result<(
         TableScanInitMetrics,
@@ -404,11 +403,11 @@ async fn filter_row_groups<K: IndexKey>(
     column_idx: usize,
     parquet_metadata: &Arc<ParquetMetaData>,
     statistics_converter: &StatisticsConverter<'_>,
-    keys: &Arc<Vec<K>>,
+    keys: &Arc<[K]>,
 ) -> Result<(RowGroupsSelectionMetrics, Vec<usize>)> {
     let mut metrics = RowGroupsSelectionMetrics::default();
 
-    let row_groups_match_statistics = {
+    let keys_filtered_for_row_groups = {
         let _timer_guard = metrics.eval_row_groups_statistics_time.timer();
         IndexKey::check_column_chunk(keys, statistics_converter, parquet_metadata.row_groups())
             .context("Could not check row group statistics")?
@@ -416,15 +415,18 @@ async fn filter_row_groups<K: IndexKey>(
 
     // If the IndexKey does not implement statistics checks, assume statistics matched every row
     // group.
-    let row_groups_match_statistics = row_groups_match_statistics
-        .unwrap_or_else(|| BooleanBuffer::new_set(parquet_metadata.row_groups().len()));
+    let keys_filtered_for_row_groups = keys_filtered_for_row_groups.unwrap_or_else(|| {
+        (0..parquet_metadata.row_groups().len())
+            .map(|_| Arc::clone(keys))
+            .collect()
+    });
 
     let mut selected_row_groups = Vec::new();
-    for (row_group_idx, row_group_matches_statistics) in
-        row_groups_match_statistics.into_iter().enumerate()
+    for (row_group_idx, keys_filtered_for_row_group) in
+        keys_filtered_for_row_groups.iter().enumerate()
     {
         // Prune row group using statistics
-        if row_group_matches_statistics {
+        if keys_filtered_for_row_group.len() > 0 {
             // there may be a key in this row group
             metrics.row_groups_selected_by_statistics += 1
         } else {
@@ -446,7 +448,9 @@ async fn filter_row_groups<K: IndexKey>(
             {
                 drop(timer_guard);
                 let _timer_guard = metrics.eval_bloom_filter_time.timer();
-                let mut keys_in_group = keys.iter().filter(|&key| bloom_filter.check(key));
+                let mut keys_in_group = keys_filtered_for_row_group
+                    .iter()
+                    .filter(|&key| bloom_filter.check(key));
                 if keys_in_group.next().is_none() {
                     // None of the keys matched the Bloom Filter
                     metrics.row_groups_pruned_by_bloom_filters += 1;
@@ -469,7 +473,7 @@ async fn filter_rows<K: IndexKey>(
     column_idx: usize,
     parquet_metadata: &Arc<ParquetMetaData>,
     statistics_converter: &StatisticsConverter<'_>,
-    keys: &Arc<Vec<K>>,
+    keys: &Arc<[K]>,
 ) -> Result<(RowsSelectionMetrics, RowSelection)> {
     let column_index = parquet_metadata.column_index();
     let offset_index = parquet_metadata.offset_index();

@@ -281,7 +281,7 @@ async fn test_without_ef() -> Result<()> {
             row_groups_selection:
                 RowGroupsSelectionMetrics {
                     row_groups_pruned_by_statistics,
-                    row_groups_selected_by_statistics: 13,
+                    row_groups_selected_by_statistics: 2,
                     row_groups_pruned_by_bloom_filters: 0, // write_database() does not build BFs
                     row_groups_selected_by_bloom_filters: 0,
                     eval_row_groups_statistics_time: _,
@@ -304,14 +304,14 @@ async fn test_without_ef() -> Result<()> {
         } => {
             assert_eq!(
                 row_groups_pruned_by_statistics,
-                NUM_ROW_GROUPS - 13,
+                NUM_ROW_GROUPS - 2,
                 "mismatched row_groups_pruned_by_statistics for different-file needles {:?}, {:#?}",
                 needles,
                 metrics
             );
             assert_eq!(
                 rows_selected_by_page_index as u64,
-                1230, // almost every page in the 13 selected groups (excludes the first one,
+                130, // most pages in the 2 selected groups (excludes the first one,
                 // and the last handful)
                 "mismatched rows_selected_by_page_index for different-file needles {:?}, {:#?}",
                 needles,
