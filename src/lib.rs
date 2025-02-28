@@ -5,6 +5,9 @@
 
 #![doc = include_str!("../README.md")]
 
+pub use arrow;
+pub use parquet;
+
 mod caching_parquet_reader;
 pub mod config;
 pub mod metrics;
