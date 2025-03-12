@@ -1,7 +1,7 @@
 [package]
 name = "parquet_aramid"
 readme = "README.md"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 description = "Query engine using Parquet tables as a Key-Value store"
 repository = "https://gitlab.softwareheritage.org/swh/devel/parquet_aramid-rs"
