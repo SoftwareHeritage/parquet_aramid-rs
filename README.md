@@ -166,7 +166,7 @@ depending on the `configurator`) is decompressed, and the `configurator`
 checks individual values, to tell `parquet_aramid` which rows × columns should
 bne returned.
 
-See the [`ParquetRecordBatchStreamBuilder`] documentation for an exhaustive
+See the [`parquet::arrow::ParquetRecordBatchStreamBuilder`] documentation for an exhaustive
 overview of all the filtering the `configurator` can do.
 
 ## Data types

@@ -19,7 +19,7 @@ pub trait Configurator: Send + Sync + 'static {
     ) -> anyhow::Result<ParquetRecordBatchStreamBuilder<R>>;
 }
 
-/// An implementation of [`ReaderBuilderConfigurator`] that does nothing
+/// An implementation of [`Configurator`] that does nothing
 ///
 /// In particular, it does not filter rows at all.
 pub struct NoopConfigurator;

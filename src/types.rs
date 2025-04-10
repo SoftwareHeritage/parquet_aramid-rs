@@ -23,9 +23,9 @@ pub type KeysFilteredByColumnChunk<K> = Box<[Arc<[K]>]>;
 /// This implies support support for (in call order):
 ///
 /// * checking file-level Elias-Fano indexes, using `as_ef_key` (optional)
-/// * checking row group statistics, in [`check_column_chunk`] (optional)
+/// * checking row group statistics, in [`IndexKey::check_column_chunk`] (optional)
 /// * checking Bloom Filter, implemented through [`AsBytes`] (required)
-/// * checking the page index, in [`check_page_index`] (optional)
+/// * checking the page index, in [`IndexKey::check_page_index`] (optional)
 pub trait IndexKey: AsBytes + Clone + Send + Sync + 'static {
     /// Returns this key as a value in the file-level Elias-Fano index, if it supports it.
     fn as_ef_key(&self) -> Option<usize>;

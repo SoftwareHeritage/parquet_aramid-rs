@@ -16,7 +16,7 @@ use parquet::arrow::{ParquetRecordBatchStreamBuilder, ProjectionMask};
 use super::Configurator;
 use crate::types::{Binary, FixedSizeBinary};
 
-/// A [`ReaderBuilderConfigurator`] that filters out rows whose value for a given
+/// A [`Configurator`] that filters out rows whose value for a given
 /// [`Binary`] or [`LargeBinaryArray|] column is not in the given set of allowed values
 ///
 /// `BINARY_SIZE` must fit in a `i32`, as Arrow does not support larger arrays.
@@ -97,7 +97,7 @@ impl<O: OffsetSizeTrait, Key: AsRef<[u8]> + Clone + Sync + Send + 'static> Confi
     }
 }
 
-/// A [`ReaderBuilderConfigurator`] that filters out rows whose value for a given
+/// A [`Configurator`] that filters out rows whose value for a given
 /// [`FixedSizeBinary`] column is not in the given set of allowed values
 ///
 /// `BINARY_SIZE` must fit in a `i32`, as Arrow does not support larger arrays.
