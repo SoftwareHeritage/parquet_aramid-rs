@@ -21,7 +21,7 @@ impl<'a> Timer<'a> {
     }
 }
 
-impl<'a> Drop for Timer<'a> {
+impl Drop for Timer<'_> {
     fn drop(&mut self) {
         *self.metric.write().unwrap() += self.started_at.elapsed();
     }
