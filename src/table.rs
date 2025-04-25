@@ -426,7 +426,7 @@ async fn filter_row_groups<K: IndexKey>(
         keys_filtered_for_row_groups.iter().enumerate()
     {
         // Prune row group using statistics
-        if keys_filtered_for_row_group.len() > 0 {
+        if !keys_filtered_for_row_group.is_empty() {
             // there may be a key in this row group
             metrics.row_groups_selected_by_statistics += 1
         } else {
