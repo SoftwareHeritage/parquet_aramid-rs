@@ -69,9 +69,9 @@ fn make_row<Needle>(_needle: Needle, key: u64) -> Row {
     Row {
         key_u64: key,
         key_u64_bloom: key,
-        key_binary_bloom: format!("item{:>21}", key).into_bytes().into(),
+        key_binary_bloom: format!("item{key:>21}").into_bytes().into(),
         key_fixedsizebinary_bloom: ar_row::FixedSizeBinary(
-            format!("item{:>21}", key).into_bytes()[..]
+            format!("item{key:>21}").into_bytes()[..]
                 .try_into()
                 .unwrap(),
         ),
@@ -128,26 +128,20 @@ async fn test_without_ef() -> Result<()> {
                 assert_eq!(
                     row_groups_pruned_by_statistics,
                     NUM_ROW_GROUPS - 1,
-                    "mismatched row_groups_pruned_by_statistics for same-page needles {:?}, {:#?}",
-                    needles,
-                    metrics
+                    "mismatched row_groups_pruned_by_statistics for same-page needles {needles:?}, {metrics:#?}"
                 );
                 assert_eq!(
                     rows_selected_by_page_index as u64, ROWS_PER_PAGE,
-                    "mismatched rows_selected_by_page_index for same-page needles {:?}, {:#?}",
-                    needles, metrics
+                    "mismatched rows_selected_by_page_index for same-page needles {needles:?}, {metrics:#?}"
                 );
                 assert_eq!(
                     rows_pruned_by_page_index as u64,
                     (PAGES_PER_GROUP - 1) * ROWS_PER_PAGE,
-                    "mismatched rows_pruned_by_page_index for same-page needles {:?}, {:#?}",
-                    needles,
-                    metrics
+                    "mismatched rows_pruned_by_page_index for same-page needles {needles:?}, {metrics:#?}"
                 );
             }
             _ => panic!(
-                "Mismatched metrics for same-page needles {:?}: {:#?}",
-                needles, metrics
+                "Mismatched metrics for same-page needles {needles:?}: {metrics:#?}"
             ),
         }
     }
@@ -185,29 +179,22 @@ async fn test_without_ef() -> Result<()> {
             assert_eq!(
                 row_groups_pruned_by_statistics,
                 NUM_ROW_GROUPS - 1,
-                "mismatched row_groups_pruned_by_statistics for same-group needles {:?}, {:#?}",
-                needles,
-                metrics
+                "mismatched row_groups_pruned_by_statistics for same-group needles {needles:?}, {metrics:#?}"
             );
             assert_eq!(
                 rows_selected_by_page_index as u64,
                 ROWS_PER_PAGE * 6, // pages 0 and 5 are expected results, pages 1 to 4 are
                 // false positives
-                "mismatched rows_selected_by_page_index for same-group needles {:?}, {:#?}",
-                needles,
-                metrics
+                "mismatched rows_selected_by_page_index for same-group needles {needles:?}, {metrics:#?}"
             );
             assert_eq!(
                 rows_pruned_by_page_index as u64,
                 (PAGES_PER_GROUP - 6) * ROWS_PER_PAGE,
-                "mismatched rows_pruned_by_page_index for same-group needles {:?}, {:#?}",
-                needles,
-                metrics
+                "mismatched rows_pruned_by_page_index for same-group needles {needles:?}, {metrics:#?}"
             );
         }
         _ => panic!(
-            "Mismatched metrics for same-group needles {:?}: {:#?}",
-            needles, metrics
+            "Mismatched metrics for same-group needles {needles:?}: {metrics:#?}"
         ),
     }
 
@@ -245,30 +232,23 @@ async fn test_without_ef() -> Result<()> {
             assert_eq!(
                 row_groups_pruned_by_statistics,
                 NUM_ROW_GROUPS - 2,
-                "mismatched row_groups_pruned_by_statistics for same-file needles {:?}, {:#?}",
-                needles,
-                metrics
+                "mismatched row_groups_pruned_by_statistics for same-file needles {needles:?}, {metrics:#?}"
             );
             assert_eq!(
                 rows_selected_by_page_index as u64,
                 (PAGES_PER_GROUP + 1) * ROWS_PER_PAGE, // pages 0 and 10 are expected results,
                 // pages pages 1 to 9 are false
                 // positives
-                "mismatched rows_selected_by_page_index for same-file needles {:?}, {:#?}",
-                needles,
-                metrics
+                "mismatched rows_selected_by_page_index for same-file needles {needles:?}, {metrics:#?}"
             );
             assert_eq!(
                 rows_pruned_by_page_index as u64,
                 (PAGES_PER_GROUP - 1) * ROWS_PER_PAGE, // pages 11 to 19 (inclusive)
-                "mismatched rows_pruned_by_page_index for same-file needles {:?}, {:#?}",
-                needles,
-                metrics
+                "mismatched rows_pruned_by_page_index for same-file needles {needles:?}, {metrics:#?}"
             );
         }
         _ => panic!(
-            "Mismatched metrics for same-file needles {:?}: {:#?}",
-            needles, metrics
+            "Mismatched metrics for same-file needles {needles:?}: {metrics:#?}"
         ),
     }
 
@@ -305,29 +285,22 @@ async fn test_without_ef() -> Result<()> {
             assert_eq!(
                 row_groups_pruned_by_statistics,
                 NUM_ROW_GROUPS - 2,
-                "mismatched row_groups_pruned_by_statistics for different-file needles {:?}, {:#?}",
-                needles,
-                metrics
+                "mismatched row_groups_pruned_by_statistics for different-file needles {needles:?}, {metrics:#?}"
             );
             assert_eq!(
                 rows_selected_by_page_index as u64,
                 130, // most pages in the 2 selected groups (excludes the first one,
                 // and the last handful)
-                "mismatched rows_selected_by_page_index for different-file needles {:?}, {:#?}",
-                needles,
-                metrics
+                "mismatched rows_selected_by_page_index for different-file needles {needles:?}, {metrics:#?}"
             );
             assert_eq!(
                 rows_pruned_by_page_index as u64,
                 10 + 60, // pages 0 and 123 to 129 (inclusive)
-                "mismatched rows_pruned_by_page_index for different-file needles {:?}, {:#?}",
-                needles,
-                metrics
+                "mismatched rows_pruned_by_page_index for different-file needles {needles:?}, {metrics:#?}"
             );
         }
         _ => panic!(
-            "Mismatched metrics for different-file needles {:?}: {:#?}",
-            needles, metrics
+            "Mismatched metrics for different-file needles {needles:?}: {metrics:#?}"
         ),
     }
 
@@ -401,26 +374,20 @@ async fn test_with_ef() -> Result<()> {
                 assert_eq!(
                     row_groups_pruned_by_statistics,
                     ROW_GROUPS_PER_FILE - 1,
-                    "mismatched row_groups_pruned_by_statistics for same-page needles {:?}, {:#?}",
-                    needles,
-                    metrics
+                    "mismatched row_groups_pruned_by_statistics for same-page needles {needles:?}, {metrics:#?}"
                 );
                 assert_eq!(
                     rows_selected_by_page_index as u64, ROWS_PER_PAGE,
-                    "mismatched rows_selected_by_page_index for same-page needles {:?}, {:#?}",
-                    needles, metrics
+                    "mismatched rows_selected_by_page_index for same-page needles {needles:?}, {metrics:#?}"
                 );
                 assert_eq!(
                     rows_pruned_by_page_index as u64,
                     (PAGES_PER_GROUP - 1) * ROWS_PER_PAGE,
-                    "mismatched rows_pruned_by_page_index for same-page needles {:?}, {:#?}",
-                    needles,
-                    metrics
+                    "mismatched rows_pruned_by_page_index for same-page needles {needles:?}, {metrics:#?}"
                 );
             }
             _ => panic!(
-                "Mismatched metrics for same-page needles {:?}: {:#?}",
-                needles, metrics
+                "Mismatched metrics for same-page needles {needles:?}: {metrics:#?}"
             ),
         }
     }
@@ -458,29 +425,22 @@ async fn test_with_ef() -> Result<()> {
             assert_eq!(
                 row_groups_pruned_by_statistics,
                 ROW_GROUPS_PER_FILE * 2 - 2, // two files opened, all but one in each file was pruned
-                "mismatched row_groups_pruned_by_statistics for different-file needles {:?}, {:#?}",
-                needles,
-                metrics
+                "mismatched row_groups_pruned_by_statistics for different-file needles {needles:?}, {metrics:#?}"
             );
             assert_eq!(
                 rows_selected_by_page_index as u64,
                 20, // no false positive, there is only one needle per file so no issue with
                 // the "convex hull" matching other pages
-                "mismatched rows_selected_by_page_index for different-file needles {:?}, {:#?}",
-                needles,
-                metrics
+                "mismatched rows_selected_by_page_index for different-file needles {needles:?}, {metrics:#?}"
             );
             assert_eq!(
                 rows_pruned_by_page_index as u64,
                 (PAGES_PER_GROUP * 2 - 2) * ROWS_PER_PAGE,
-                "mismatched rows_pruned_by_page_index for different-file needles {:?}, {:#?}",
-                needles,
-                metrics
+                "mismatched rows_pruned_by_page_index for different-file needles {needles:?}, {metrics:#?}"
             );
         }
         _ => panic!(
-            "Mismatched metrics for different-file needles {:?}: {:#?}",
-            needles, metrics
+            "Mismatched metrics for different-file needles {needles:?}: {metrics:#?}"
         ),
     }
 

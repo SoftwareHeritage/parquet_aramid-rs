@@ -98,7 +98,7 @@ pub fn write_database(
         if key_batches.peek().is_none() {
             break;
         }
-        let file = std::fs::File::create_new(path.join(format!("{}.parquet", file_id)))
+        let file = std::fs::File::create_new(path.join(format!("{file_id}.parquet")))
             .context("Could not create file")?;
         let mut writer =
             ArrowWriter::try_new(file, schema.clone(), Some(properties.clone())).unwrap();
@@ -117,7 +117,7 @@ pub fn write_database(
                         Arc::new(keys.clone()),
                         Arc::new(keys.clone()),
                         Arc::new(BinaryArray::from_iter(keys.iter().map(|key| {
-                            key.map(|key| format!("item{:>21}", key).into_bytes())
+                            key.map(|key| format!("item{key:>21}").into_bytes())
                         }))),
                         Arc::new(
                             FixedSizeBinaryArray::try_from_iter(keys.iter().map(|key| {
@@ -180,8 +180,7 @@ pub async fn check_results<Needle: IndexKey + Ord + Clone>(
         .collect();
     assert_eq!(
         results, expected_results,
-        "Unexpected results when searching for {:?}. Metrics: {:#?}",
-        expected_keys, metrics
+        "Unexpected results when searching for {expected_keys:?}. Metrics: {metrics:#?}"
     );
     Ok((needles, metrics))
 }

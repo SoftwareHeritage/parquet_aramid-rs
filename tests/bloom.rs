@@ -57,9 +57,9 @@ fn make_row<Needle>(_needle: Needle, key: u64) -> Row {
     Row {
         key_u64: key,
         key_u64_bloom: key,
-        key_binary_bloom: format!("item{:>21}", key).into_bytes().into(),
+        key_binary_bloom: format!("item{key:>21}").into_bytes().into(),
         key_fixedsizebinary_bloom: ar_row::FixedSizeBinary(
-            format!("item{:>21}", key).into_bytes()[..]
+            format!("item{key:>21}").into_bytes()[..]
                 .try_into()
                 .unwrap(),
         ),
@@ -101,7 +101,7 @@ async fn test_bloom() -> Result<()> {
     test_bloom_inner::<parquet_aramid::types::Binary<Box<[u8]>>, _>(|keys: Vec<u64>| {
         let make_needle = |key: u64| {
             parquet_aramid::types::Binary(
-                format!("item{:>21}", key).into_bytes().into_boxed_slice(),
+                format!("item{key:>21}").into_bytes().into_boxed_slice(),
             )
         };
         let configurator = FilterBinaryConfigurator::<i32, _>::with_sorted_keys(
@@ -121,7 +121,7 @@ async fn test_bloom() -> Result<()> {
     test_bloom_inner::<parquet_aramid::types::FixedSizeBinary<{ FIXEDSIZEBINARY_SIZE as _ }>, _>(
         |keys: Vec<u64>| {
             let make_needle = |key| parquet_aramid::types::FixedSizeBinary::<{FIXEDSIZEBINARY_SIZE as _}>(
-                format!("item{:>21}", key).into_bytes()[..]
+                format!("item{key:>21}").into_bytes()[..]
                     .try_into()
                     .unwrap()
             );
@@ -192,28 +192,21 @@ async fn test_bloom_inner<
                 assert_eq!(
                     row_groups_pruned_by_bloom_filters + row_groups_selected_by_bloom_filters,
                     NUM_ROW_GROUPS,
-                    "Sum of number of row groups pruned + selected by Bloom Filters does not match the total number of row groups for needles {:?}, {:#?}",
-                    needles,
-                    metrics
+                    "Sum of number of row groups pruned + selected by Bloom Filters does not match the total number of row groups for needles {needles:?}, {metrics:#?}"
                 );
 
                 // Bloom Filters are probabilistic, so we can't use equality.
                 assert!(
                     row_groups_selected_by_bloom_filters >= 1,
-                    "No row group was selected by bloom filters for needles {:?}, {:#?}",
-                    needles,
-                    metrics
+                    "No row group was selected by bloom filters for needles {needles:?}, {metrics:#?}"
                 );
                 assert!(
                     row_groups_selected_by_bloom_filters <= 5,
-                    "Surprisingly high number of Bloom Filter false positives for needles {:?}, {:#?}",
-                    needles,
-                    metrics
+                    "Surprisingly high number of Bloom Filter false positives for needles {needles:?}, {metrics:#?}"
                 );
             }
             _ => panic!(
-                "Mismatched metrics for needles {:?}: {:#?}",
-                needles, metrics
+                "Mismatched metrics for needles {needles:?}: {metrics:#?}"
             ),
         }
     }
@@ -251,28 +244,21 @@ async fn test_bloom_inner<
             assert_eq!(
                 row_groups_pruned_by_bloom_filters + row_groups_selected_by_bloom_filters,
                 NUM_ROW_GROUPS,
-                "Sum of number of row groups pruned + selected by Bloom Filters does not match the total number of row groups for needles {:?}, {:#?}",
-                needles,
-                metrics
+                "Sum of number of row groups pruned + selected by Bloom Filters does not match the total number of row groups for needles {needles:?}, {metrics:#?}"
             );
 
             // Bloom Filters are probabilistic, so we can't use equality.
             assert!(
                 row_groups_selected_by_bloom_filters >= 1,
-                "No row group was selected by bloom filters for needles {:?}, {:#?}",
-                needles,
-                metrics
+                "No row group was selected by bloom filters for needles {needles:?}, {metrics:#?}"
             );
             assert!(
                 row_groups_selected_by_bloom_filters <= 5,
-                "Surprisingly high number of Bloom Filter false positives for needles {:?}, {:#?}",
-                needles,
-                metrics
+                "Surprisingly high number of Bloom Filter false positives for needles {needles:?}, {metrics:#?}"
             );
         }
         _ => panic!(
-            "Mismatched metrics for same-file needles {:?}: {:#?}",
-            needles, metrics
+            "Mismatched metrics for same-file needles {needles:?}: {metrics:#?}"
         ),
     }
 

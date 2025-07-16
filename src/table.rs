@@ -66,7 +66,7 @@ impl Table {
             })
             .try_collect()
             .await
-            .with_context(|| format!("Could not list {} in {}", path, store))?;
+            .with_context(|| format!("Could not list {path} in {store}"))?;
 
         tracing::trace!("Opening files");
         let files: Vec<_> = objects_meta
@@ -185,8 +185,8 @@ impl Table {
     /// for each selected reader
     #[instrument(name = "Table::readers_filtered_by_keys", skip_all)]
     #[allow(clippy::type_complexity)]
-    pub async fn readers_filtered_by_keys<'a, K: IndexKey>(
-        &'a self,
+    pub async fn readers_filtered_by_keys<K: IndexKey>(
+        &self,
         column: &'static str,
         keys: &Arc<[K]>,
     ) -> Result<(
@@ -256,8 +256,8 @@ impl Table {
 
     #[instrument(name="Table::stream_for_keys", skip_all, fields(column=%column))]
     /// Returns all rows in which the given column contains any of the given keys
-    pub async fn stream_for_keys<'a, K: IndexKey>(
-        &'a self,
+    pub async fn stream_for_keys<K: IndexKey>(
+        &self,
         column: &'static str,
         keys: &Arc<[K]>,
         config: Arc<impl Configurator>,
@@ -268,7 +268,7 @@ impl Table {
         let column_idx: usize = self
             .schema
             .index_of(column)
-            .with_context(|| format!("Unknown column {}", column))?;
+            .with_context(|| format!("Unknown column {column}"))?;
 
         let (pruned_metrics, selected_readers_and_metrics) = self
             .readers_filtered_by_keys(column, keys)

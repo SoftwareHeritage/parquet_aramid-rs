@@ -110,7 +110,7 @@ impl FileReader {
             .file_name()
             .expect("Table file has no name")
             .to_os_string();
-        file_name.push(format!(".index={}.ef", column_name));
+        file_name.push(format!(".index={column_name}.ef"));
         path.set_file_name(file_name);
         path
     }
@@ -176,7 +176,7 @@ impl FileReader {
             .columns()
             .iter()
             .position(|column| column.name() == column_name)
-            .with_context(|| format!("{:?} has no column named {}", schema, column_name))?;
+            .with_context(|| format!("{schema:?} has no column named {column_name}"))?;
 
         let projection_mask = ProjectionMask::roots(parquet_schema, [column_idx]);
         let ef_sequences: Vec<EfSeq> = stream_builder
@@ -191,8 +191,7 @@ impl FileReader {
                     .as_primitive_opt::<UInt64Type>()
                     .with_context(|| {
                         format!(
-                            "Column {} has UInt64Array statistics, but is not a UInt64Array",
-                            column_name
+                            "Column {column_name} has UInt64Array statistics, but is not a UInt64Array"
                         )
                     })?;
                 ensure!(
@@ -206,7 +205,7 @@ impl FileReader {
                     .dedup() // early dedup to save time in the sort below
                     .map(|value| {
                         usize::try_from(value)
-                            .with_context(|| format!("Value in {} overflowed usize", column_name))
+                            .with_context(|| format!("Value in {column_name} overflowed usize"))
                     })
                     .collect::<Result<Vec<_>>>()?;
 
