@@ -1,4 +1,4 @@
-// Copyright (C) 2024  The Software Heritage developers
+// Copyright (C) 2024-2026  The Software Heritage developers
 // See the AUTHORS file at the top-level directory of this distribution
 // License: GNU General Public License version 3, or any later version
 // See top-level LICENSE file for more information
@@ -21,41 +21,36 @@ use parquet::arrow::ParquetRecordBatchStreamBuilder;
 use parquet::arrow::ProjectionMask;
 use parquet::file::metadata::ParquetMetaData;
 use rdst::RadixSort;
-use sux::dict::elias_fano::{EfDict, EfSeq, EliasFano, EliasFanoBuilder};
-use sux::prelude::{BitFieldVec, BitVec, IndexedDict, SelectZeroAdaptConst, Types};
+use sux::dict::elias_fano::{EfDict, EfSeq, EliasFanoBuilder};
+use sux::traits::indexed_dict::{IndexedDict, Types};
 
 use super::caching_parquet_reader::CachingParquetFileReader;
 use super::pooled_reader::ParquetFileReaderPool;
-
-type MappedEfDict = EliasFano<
-    SelectZeroAdaptConst<BitVec<&'static [usize]>, &'static [usize], 12, 3>,
-    BitFieldVec<usize, &'static [usize]>,
->;
 
 pub enum EfIndexValues {
     /// In memory allocated on the heap
     Loaded(EfDict), // EfDict = EliasFano<SelectZeroAdaptConst<BitVec<Box<[usize]>>, Box<[usize]>, 12, 3>>
     /// Memory-mapped from disk
-    Mapped(MemCase<MappedEfDict>),
+    Mapped(MemCase<EfDict>),
 }
 
 impl Types for EfIndexValues {
     type Input = <EfDict as Types>::Input;
-    type Output = <EfDict as Types>::Output;
+    type Output<'a> = <EfDict as Types>::Output<'a>;
 }
 
 impl IndexedDict for EfIndexValues {
     fn index_of(&self, value: impl Borrow<Self::Input>) -> Option<usize> {
         match self {
             EfIndexValues::Loaded(values) => values.index_of(value),
-            EfIndexValues::Mapped(values) => values.index_of(value),
+            EfIndexValues::Mapped(values) => values.uncase().index_of(value),
         }
     }
 
     fn contains(&self, value: impl Borrow<Self::Input>) -> bool {
         match self {
             EfIndexValues::Loaded(values) => values.contains(value),
-            EfIndexValues::Mapped(values) => values.contains(value),
+            EfIndexValues::Mapped(values) => values.uncase().contains(value),
         }
     }
 }
@@ -145,10 +140,12 @@ impl FileReader {
         let res = self.ef_index.set(EfIndex {
             column_name,
             values: EfIndexValues::Mapped(
-                <EfDict as epserde::deser::Deserialize>::mmap(
-                    &path,
-                    Flags::RANDOM_ACCESS | Flags::TRANSPARENT_HUGE_PAGES,
-                )
+                unsafe {
+                    <EfDict as epserde::deser::Deserialize>::mmap(
+                        &path,
+                        Flags::RANDOM_ACCESS | Flags::TRANSPARENT_HUGE_PAGES,
+                    )
+                }
                 .with_context(|| {
                     format!("Could not mmap Elias-Fano index from {}", path.display())
                 })?,
@@ -231,7 +228,7 @@ impl FileReader {
             0
         });
         let mut efb = EliasFanoBuilder::new(values.len(), max_value);
-        efb.extend(values.into_iter());
+        efb.extend(values);
         let res = self.ef_index.set(EfIndex {
             column_name,
             values: EfIndexValues::Loaded(efb.build_with_dict()),

@@ -328,9 +328,7 @@ async fn test_with_ef() -> Result<()> {
         // Write index to disk
         let index_path = file.ef_index_path("key_u64");
         let mut ef_file = std::fs::File::create_new(&index_path).unwrap();
-        ef_values
-            .serialize(&mut ef_file)
-            .expect("Could not serialize Elias-Fano index");
+        unsafe { ef_values.serialize(&mut ef_file) }.expect("Could not serialize Elias-Fano index");
     }
 
     table
