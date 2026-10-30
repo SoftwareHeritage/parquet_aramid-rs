@@ -103,7 +103,7 @@ impl Table {
                     .with_context(|| {
                         format!("Could not get reader for {}", file.object_meta().location)
                     })?
-                    .get_metadata()
+                    .get_metadata(None)
                     .await
                     .with_context(|| {
                         format!("Could not get metadata for {}", file.object_meta().location)

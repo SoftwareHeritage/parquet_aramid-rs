@@ -76,13 +76,13 @@ impl FileReader {
         object_meta: Arc<ObjectMeta>,
         base_ef_index_path: PathBuf,
     ) -> Result<Self> {
-        let mut reader = ParquetObjectReader::new(Arc::clone(&store), (*object_meta).clone())
+        let mut reader = ParquetObjectReader::new(Arc::clone(&store), object_meta.location.clone())
             .with_preload_column_index(true)
             .with_preload_offset_index(true);
         Ok(Self {
             store,
             object_meta,
-            parquet_metadata: reader.get_metadata().await?,
+            parquet_metadata: reader.get_metadata(None).await?,
             pool: ParquetFileReaderPool::default(),
             ef_index: OnceLock::new(),
             base_ef_index_path,
@@ -113,10 +113,13 @@ impl FileReader {
     pub async fn reader(&self) -> Result<impl AsyncFileReader> {
         self.pool.try_get_reader(|| {
             Ok(CachingParquetFileReader::new(
-                ParquetObjectReader::new(Arc::clone(&self.store), (*self.object_meta).clone())
-                    // Don't load the page index again, it was already loaded with a previous reader
-                    .with_preload_column_index(false)
-                    .with_preload_offset_index(false),
+                ParquetObjectReader::new(
+                    Arc::clone(&self.store),
+                    self.object_meta.location.clone(),
+                )
+                // Don't load the page index again, it was already loaded with a previous reader
+                .with_preload_column_index(false)
+                .with_preload_offset_index(false),
                 Arc::clone(&self.parquet_metadata),
             ))
         })
