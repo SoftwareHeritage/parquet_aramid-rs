@@ -143,8 +143,9 @@ checksum = "2a4385e2e34eb35d6b3efe798b9eb88096925d87726c0798709bf56d9ed84af3"
 
 [[package]]
 name = "ar_row"
-version = "1.1.0"
-source = "git+https://gitlab.softwareheritage.org/swh/devel/ar_row-rs?rev=fe5fe4345c28dadd91599eee989c2b088844ca8f#fe5fe4345c28dadd91599eee989c2b088844ca8f"
+version = "1.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "83432a8ec0fd7133a392910084bb92508669fc7874d4eec8d51ac4a592a310de"
 dependencies = [
  "arrow",
  "cxx-build",
@@ -153,8 +154,9 @@ dependencies = [
 
 [[package]]
 name = "ar_row_derive"
-version = "1.1.0"
-source = "git+https://gitlab.softwareheritage.org/swh/devel/ar_row-rs?rev=fe5fe4345c28dadd91599eee989c2b088844ca8f#fe5fe4345c28dadd91599eee989c2b088844ca8f"
+version = "1.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "764ae50c068a34b0a4f42e19d5323d90856b455933833763b6eef1f61618f6ae"
 dependencies = [
  "ar_row",
  "proc-macro2",
