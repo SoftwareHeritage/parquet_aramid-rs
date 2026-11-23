@@ -100,9 +100,7 @@ async fn test_bloom() -> Result<()> {
     .await?;
     test_bloom_inner::<parquet_aramid::types::Binary<Box<[u8]>>, _>(|keys: Vec<u64>| {
         let make_needle = |key: u64| {
-            parquet_aramid::types::Binary(
-                format!("item{key:>21}").into_bytes().into_boxed_slice(),
-            )
+            parquet_aramid::types::Binary(format!("item{key:>21}").into_bytes().into_boxed_slice())
         };
         let configurator = FilterBinaryConfigurator::<i32, _>::with_sorted_keys(
             "key_binary_bloom",
@@ -205,9 +203,7 @@ async fn test_bloom_inner<
                     "Surprisingly high number of Bloom Filter false positives for needles {needles:?}, {metrics:#?}"
                 );
             }
-            _ => panic!(
-                "Mismatched metrics for needles {needles:?}: {metrics:#?}"
-            ),
+            _ => panic!("Mismatched metrics for needles {needles:?}: {metrics:#?}"),
         }
     }
 
@@ -257,9 +253,7 @@ async fn test_bloom_inner<
                 "Surprisingly high number of Bloom Filter false positives for needles {needles:?}, {metrics:#?}"
             );
         }
-        _ => panic!(
-            "Mismatched metrics for same-file needles {needles:?}: {metrics:#?}"
-        ),
+        _ => panic!("Mismatched metrics for same-file needles {needles:?}: {metrics:#?}"),
     }
 
     Ok(())

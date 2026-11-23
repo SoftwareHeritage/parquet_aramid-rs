@@ -7,6 +7,7 @@ use std::ops::Range;
 use std::sync::Arc;
 
 use futures::future::BoxFuture;
+use parquet::arrow::arrow_reader::ArrowReaderOptions;
 use parquet::arrow::async_reader::AsyncFileReader;
 use parquet::file::metadata::ParquetMetaData;
 
@@ -25,18 +26,21 @@ impl<R: AsyncFileReader> CachingParquetFileReader<R> {
 impl<R: AsyncFileReader> AsyncFileReader for CachingParquetFileReader<R> {
     fn get_bytes(
         &mut self,
-        range: Range<usize>,
+        range: Range<u64>,
     ) -> BoxFuture<'_, parquet::errors::Result<bytes::Bytes>> {
         self.inner.get_bytes(range)
     }
 
-    fn get_metadata(&mut self) -> BoxFuture<'_, parquet::errors::Result<Arc<ParquetMetaData>>> {
+    fn get_metadata<'a>(
+        &'a mut self,
+        _options: Option<&'a ArrowReaderOptions>,
+    ) -> BoxFuture<'a, parquet::errors::Result<Arc<ParquetMetaData>>> {
         Box::pin(std::future::ready(Ok(Arc::clone(&self.metadata))))
     }
 
     fn get_byte_ranges(
         &mut self,
-        ranges: Vec<Range<usize>>,
+        ranges: Vec<Range<u64>>,
     ) -> BoxFuture<'_, parquet::errors::Result<Vec<bytes::Bytes>>> {
         self.inner.get_byte_ranges(ranges)
     }

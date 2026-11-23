@@ -140,9 +140,7 @@ async fn test_without_ef() -> Result<()> {
                     "mismatched rows_pruned_by_page_index for same-page needles {needles:?}, {metrics:#?}"
                 );
             }
-            _ => panic!(
-                "Mismatched metrics for same-page needles {needles:?}: {metrics:#?}"
-            ),
+            _ => panic!("Mismatched metrics for same-page needles {needles:?}: {metrics:#?}"),
         }
     }
 
@@ -193,9 +191,7 @@ async fn test_without_ef() -> Result<()> {
                 "mismatched rows_pruned_by_page_index for same-group needles {needles:?}, {metrics:#?}"
             );
         }
-        _ => panic!(
-            "Mismatched metrics for same-group needles {needles:?}: {metrics:#?}"
-        ),
+        _ => panic!("Mismatched metrics for same-group needles {needles:?}: {metrics:#?}"),
     }
 
     // All results in the same file, but two different row groups
@@ -247,9 +243,7 @@ async fn test_without_ef() -> Result<()> {
                 "mismatched rows_pruned_by_page_index for same-file needles {needles:?}, {metrics:#?}"
             );
         }
-        _ => panic!(
-            "Mismatched metrics for same-file needles {needles:?}: {metrics:#?}"
-        ),
+        _ => panic!("Mismatched metrics for same-file needles {needles:?}: {metrics:#?}"),
     }
 
     // Results from different files
@@ -299,9 +293,7 @@ async fn test_without_ef() -> Result<()> {
                 "mismatched rows_pruned_by_page_index for different-file needles {needles:?}, {metrics:#?}"
             );
         }
-        _ => panic!(
-            "Mismatched metrics for different-file needles {needles:?}: {metrics:#?}"
-        ),
+        _ => panic!("Mismatched metrics for different-file needles {needles:?}: {metrics:#?}"),
     }
 
     Ok(())
@@ -384,9 +376,7 @@ async fn test_with_ef() -> Result<()> {
                     "mismatched rows_pruned_by_page_index for same-page needles {needles:?}, {metrics:#?}"
                 );
             }
-            _ => panic!(
-                "Mismatched metrics for same-page needles {needles:?}: {metrics:#?}"
-            ),
+            _ => panic!("Mismatched metrics for same-page needles {needles:?}: {metrics:#?}"),
         }
     }
 
@@ -437,9 +427,7 @@ async fn test_with_ef() -> Result<()> {
                 "mismatched rows_pruned_by_page_index for different-file needles {needles:?}, {metrics:#?}"
             );
         }
-        _ => panic!(
-            "Mismatched metrics for different-file needles {needles:?}: {metrics:#?}"
-        ),
+        _ => panic!("Mismatched metrics for different-file needles {needles:?}: {metrics:#?}"),
     }
 
     Ok(())

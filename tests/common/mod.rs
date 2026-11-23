@@ -116,9 +116,10 @@ pub fn write_database(
                     vec![
                         Arc::new(keys.clone()),
                         Arc::new(keys.clone()),
-                        Arc::new(BinaryArray::from_iter(keys.iter().map(|key| {
-                            key.map(|key| format!("item{key:>21}").into_bytes())
-                        }))),
+                        Arc::new(BinaryArray::from_iter(
+                            keys.iter()
+                                .map(|key| key.map(|key| format!("item{key:>21}").into_bytes())),
+                        )),
                         Arc::new(
                             FixedSizeBinaryArray::try_from_iter(keys.iter().map(|key| {
                                 format!("item{:>21}", key.expect("null key")).into_bytes()
