@@ -287,6 +287,8 @@ impl Table {
                             let _timer_guard = metrics.open_builder_time.timer();
                             ParquetRecordBatchStreamBuilder::new_with_options(
                                 reader,
+                                #[allow(deprecated)]
+                                // parquet v57 replaced it with with_page_index_policy
                                 ArrowReaderOptions::new().with_page_index(true),
                             )
                             .await

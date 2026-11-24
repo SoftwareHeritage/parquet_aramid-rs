@@ -22,9 +22,9 @@ tracing = "0.1.40"
 
 # Database
 bytes = "1.7.1"
-arrow = ">=55.0.0, <58"
-object_store = { version = "0.12.0", default-features = false }
-parquet = { version = ">=55.0.0, <58", default-features = false, features = ["arrow", "async", "object_store", "zstd"]}
+arrow = ">=55.0.0, <59"
+object_store = { version = ">=0.12.0, <0.14", default-features = false }
+parquet = { version = ">=55.0.0, <59", default-features = false, features = ["arrow", "async", "object_store", "zstd"]}
 url = "2.2"
 
 # Elias-Fano index
@@ -37,11 +37,11 @@ tokio = { version = "1.0", features = ["rt-multi-thread"] }
 tokio-stream = "0.1"
 
 [dev-dependencies]
-ar_row = "1.2.0"
-ar_row_derive = "1.2.0"
+ar_row = ">=1.2.0, <3"
+ar_row_derive = ">=1.2.0, <3"
 tempfile = "3.7.1"
 tokio-test = "0.4.4"
-object_store = { version = "0.12.0", default-features = false, features = ["fs"] }
+object_store = { version = ">=0.12.0, <0.14", default-features = false, features = ["fs"] }
 
 [features]
 default = []

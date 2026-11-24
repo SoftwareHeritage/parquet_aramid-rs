@@ -165,6 +165,7 @@ impl FileReader {
 
         let stream_builder = ParquetRecordBatchStreamBuilder::new_with_options(
             reader,
+            #[allow(deprecated)] // parquet v57 replaced it with with_page_index_policy
             ArrowReaderOptions::new().with_page_index(false),
         )
         .await

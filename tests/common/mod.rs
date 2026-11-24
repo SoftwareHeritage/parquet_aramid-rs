@@ -78,17 +78,31 @@ pub fn write_database(
     let path = path.as_ref();
     let schema = Arc::new(schema());
 
-    // WriterProperties can be used to set Parquet file options
+    // parquet v57 replaced set_max_row_group_size() with set_max_row_group_row_count()
+    #[allow(deprecated)]
     let properties = WriterProperties::builder()
         .set_compression(Compression::UNCOMPRESSED)
         .set_data_page_row_count_limit(ROWS_PER_PAGE as usize)
         .set_write_batch_size(ROWS_PER_PAGE as usize)
+        .set_max_row_group_size(usize::MAX) // we control it manually on a per-rowgroup basis
         .set_bloom_filter_ndv(100)
         .set_bloom_filter_enabled(false)
         .set_column_bloom_filter_enabled("key_u64_bloom".into(), with_bloom_filters)
         .set_column_bloom_filter_enabled("key_binary_bloom".into(), with_bloom_filters)
         .set_column_bloom_filter_enabled("key_fixedsizebinary_bloom".into(), with_bloom_filters)
-        .set_max_row_group_size(usize::MAX) // we control it manually on a per-rowgroup basis
+        // halve the default false-positive probability, so tests can check there are few
+        // false-positives with high confidence.
+        // This is only needed since parquet 58.2.0
+        // (https://github.com/apache/arrow-rs/commit/c6ea0a5e0cf6c5fc9f2fc3610fe2351bb5ec25c0)
+        // because older versions sized their Bloom Filters for 1M elements, so they were
+        // oversized and the fpp did not need to be tuned.
+        .set_column_bloom_filter_fpp("key_u64_bloom".into(), 0.005)
+        .set_column_bloom_filter_fpp("key_binary_bloom".into(), 0.005)
+        .set_column_bloom_filter_fpp("key_fixedsizebinary_bloom".into(), 0.005)
+        // makes the Bloom filters faster to build:
+        .set_column_bloom_filter_ndv("key_u64_bloom".into(), 100)
+        .set_column_bloom_filter_ndv("key_binary_bloom".into(), 100)
+        .set_column_bloom_filter_ndv("key_fixedsizebinary_bloom".into(), 100)
         .build();
 
     let mut key_batches = key_batches.into_iter().enumerate().peekable();
