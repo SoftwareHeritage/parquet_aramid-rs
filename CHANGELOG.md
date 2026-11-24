@@ -1,3 +1,30 @@
+# v0.4.0
+
+*2026-11-24*
+
+Breaking changes:
+
+* Switch from arrow v53 to v55-v58
+* Bump MSRV to 1.85
+
+Internal:
+
+* Switch to released ar_row and ar_row_derive in dev-dependencies
+* Fix doctest
+
+# v0.3.0
+
+*2026-06-30*
+
+Breaking changes:
+
+* Update epserde from 0.6.1 to 0.12.0 and sux from 0.4.1 to 0.12.0
+
+Internal:
+
+* Remove Cargo.lock from gitignore
+* Fix Clippy warnings
+
 # v0.2.0
 
 *2025-03-12*
