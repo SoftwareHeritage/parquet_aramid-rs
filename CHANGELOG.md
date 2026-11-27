@@ -1,3 +1,12 @@
+# v0.4.1
+
+*2026-11-26*
+
+New features:
+
+* Add support for arrow v59.
+  Note: Parquet >= 52.2.0 throws some warnings, this will be fixed in a future version that removes support for Arrow <59.
+
 # v0.4.0
 
 *2026-11-24*
