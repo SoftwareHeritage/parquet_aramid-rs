@@ -22,9 +22,9 @@ tracing = "0.1.40"
 
 # Database
 bytes = "1.7.1"
-arrow = ">=55.0.0, <59"
+arrow = ">=55.0.0, <60"
 object_store = { version = ">=0.12.0, <0.14", default-features = false }
-parquet = { version = ">=55.0.0, <59", default-features = false, features = ["arrow", "async", "object_store", "zstd"]}
+parquet = { version = ">=55.0.0, <60", default-features = false, features = ["arrow", "async", "object_store", "zstd"]}
 url = "2.2"
 
 # Elias-Fano index
